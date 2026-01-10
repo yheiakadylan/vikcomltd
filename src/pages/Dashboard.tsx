@@ -11,6 +11,7 @@ import type { Order } from '../types';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getAuthUrl, isAuthenticated } from '../services/dropbox';
+import { sortOrders } from '../utils/sortOrders';
 
 const { Header, Content } = Layout;
 
@@ -53,18 +54,8 @@ const Dashboard: React.FC = () => {
             snapshot.forEach((doc) => {
                 fetched.push({ id: doc.id, ...doc.data() } as Order);
             });
-            // Client side sorting: Urgent First, then by Deadline
-            fetched.sort((a, b) => {
-                if (a.isUrgent !== b.isUrgent) return b.isUrgent ? 1 : -1;
-                // 2. Compare Status Priority (Need Fix > Others)
-                if (a.status === 'need_fix' && b.status !== 'need_fix') return -1;
-                if (b.status === 'need_fix' && a.status !== 'need_fix') return 1;
-                // 3. Compare Deadline (Earlier first)
-                const dateA = a.deadline ? new Date((a.deadline as any).seconds ? (a.deadline as any).seconds * 1000 : a.deadline).getTime() : 0;
-                const dateB = b.deadline ? new Date((b.deadline as any).seconds ? (b.deadline as any).seconds * 1000 : b.deadline).getTime() : 0;
-                return dateA - dateB;
-            });
-            setOrders(fetched);
+
+            setOrders(sortOrders(fetched));
             setLoading(false);
         });
 

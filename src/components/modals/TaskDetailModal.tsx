@@ -9,6 +9,9 @@ import { db } from '../../services/firebase';
 import { uploadFileToDropbox } from '../../services/dropbox';
 import dayjs from 'dayjs';
 
+import RejectModal from './RejectModal';
+import GiveBackModal from './GiveBackModal';
+
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
@@ -24,6 +27,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
     const [loading, setLoading] = useState(false);
     const [localUrgent, setLocalUrgent] = useState(false);
     const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
+    const [showRejectModal, setShowRejectModal] = useState(false);
+    const [showGiveBackModal, setShowGiveBackModal] = useState(false);
 
     useEffect(() => {
         if (order) {
@@ -135,23 +140,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
         }
     };
 
-    const handleReject = async () => {
-        // Simple reject for now, ideally needs a Reason Modal
-        setLoading(true);
-        try {
-            await updateDoc(doc(db, "orders", order.id), {
-                status: 'need_fix',
-                isUrgent: true // Auto urgent on reject
-            });
-            message.warning("Đã trả lại để sửa!");
-            onUpdate();
-            onCancel();
-        } catch (e) {
-            message.error("Failed to reject");
-        } finally {
-            setLoading(false);
-        }
-    };
+
 
     // Render Work Zone (Right Column)
     const renderWorkZone = () => {
@@ -204,10 +193,12 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                 <div style={{ textAlign: 'center' }}>
                     <div style={{ marginBottom: 24, padding: 16, border: '1px dashed #d9d9d9', borderRadius: 8 }}>
                         <Text type="secondary">Files submitted: {order.designFiles?.length || 0}</Text>
-                        {/* List files here */}
+                        <div style={{ marginTop: 8 }}>
+                            {order.designFiles?.map((f, i) => <div key={i}><Text code>{f}</Text></div>)}
+                        </div>
                     </div>
                     <div style={{ display: 'flex', gap: 16 }}>
-                        <Button danger size="large" onClick={handleReject} loading={loading} style={{ flex: 1 }}>REJECT (Fix)</Button>
+                        <Button danger size="large" onClick={() => setShowRejectModal(true)} loading={loading} style={{ flex: 1 }}>REJECT (Fix)</Button>
                         <Button type="primary" size="large" onClick={handleApprove} loading={loading} style={{ background: colors.successGreen, flex: 1 }}>APPROVE</Button>
                     </div>
                 </div>
@@ -228,7 +219,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                 <div>
                     <Tag color="blue">#{order.readableId}</Tag>
-                    <Text>ID</Text>
+                    <Text type="secondary">ID</Text>
                     <Title level={4} style={{ margin: '8px 0 0' }}>{order.title}</Title>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -244,47 +235,84 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                 </div>
             </div>
 
-            <Row gutter={24}>
-                <Col span={14} style={{ borderRight: '1px solid #f0f0f0' }}>
-                    <div style={{ marginBottom: 24 }}>
-                        <Text type="secondary">Description</Text>
-                        <div style={{ background: '#fafafa', padding: 12, borderRadius: 8, marginTop: 8, minHeight: 100 }}>
-                            {order.description}
+            {/* Other Modals */}
+            <RejectModal
+                order={order}
+                open={showRejectModal}
+                onCancel={() => setShowRejectModal(false)}
+                onSuccess={() => {
+                    setShowRejectModal(false);
+                    onUpdate();
+                    onCancel();
+                }}
+            />
+
+            <GiveBackModal
+                order={order}
+                open={showGiveBackModal}
+                onCancel={() => setShowGiveBackModal(false)}
+                onSuccess={() => {
+                    setShowGiveBackModal(false);
+                    onUpdate();
+                    onCancel();
+                }}
+            />
+
+            <Row gutter={24} style={{ height: 'calc(100vh - 200px)', overflowY: 'auto' }}>
+                {/* INFO REGION (Top/Left) - Read Only for DS */}
+                <Col span={14} style={{ borderRight: '1px solid #f0f0f0', paddingRight: 24 }}>
+                    <div style={{ pointerEvents: isDS ? 'none' : 'auto', opacity: isDS ? 0.9 : 1 }}>
+                        <div style={{ marginBottom: 24 }}>
+                            <Text type="secondary">Description</Text>
+                            <div style={{ background: '#fafafa', padding: 12, borderRadius: 8, marginTop: 8, minHeight: 100, border: '1px solid #f0f0f0' }}>
+                                {order.description}
+                            </div>
                         </div>
-                    </div>
 
-                    <Row gutter={16}>
-                        <Col span={12}>
-                            <div style={{ background: '#fff0f6', padding: 12, borderRadius: 8 }}>
-                                <Text type="secondary">Quantity</Text>
-                                <div style={{ fontSize: 18, fontWeight: 600 }}>{order.quantity}</div>
-                            </div>
-                        </Col>
-                        <Col span={12}>
-                            <div style={{ background: '#fff0f6', padding: 12, borderRadius: 8 }}>
-                                <Text type="secondary">Deadline</Text>
-                                <div style={{ fontSize: 18, fontWeight: 600 }}>
-                                    {order.deadline ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline).format('DD/MM HH:mm') : 'N/A'}
+                        <Row gutter={16}>
+                            <Col span={12}>
+                                <div style={{ background: '#fff0f6', padding: 12, borderRadius: 8 }}>
+                                    <Text type="secondary">Quantity</Text>
+                                    <div style={{ fontSize: 18, fontWeight: 600 }}>{order.quantity}</div>
                                 </div>
-                            </div>
-                        </Col>
-                    </Row>
+                            </Col>
+                            <Col span={12}>
+                                <div style={{ background: '#fff0f6', padding: 12, borderRadius: 8 }}>
+                                    <Text type="secondary">Deadline</Text>
+                                    <div style={{ fontSize: 18, fontWeight: 600 }}>
+                                        {order.deadline ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline).format('DD/MM HH:mm') : 'N/A'}
+                                    </div>
+                                </div>
+                            </Col>
+                        </Row>
 
-                    <Divider />
+                        <Divider />
 
-                    <Title level={5}>Sample Files</Title>
-                    {/* Placeholder for Sample Images */}
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        {order.sampleFiles && order.sampleFiles.length > 0 ? (
-                            order.sampleFiles.map((_, idx) => (
-                                <div key={idx} style={{ width: 80, height: 80, background: '#eee', borderRadius: 4 }}></div>
-                            ))
-                        ) : <Text type="secondary" italic>No samples</Text>}
+                        <Title level={5}>Sample Files</Title>
+                        {/* Placeholder for Sample Images */}
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {order.sampleFiles && order.sampleFiles.length > 0 ? (
+                                order.sampleFiles.map((_, idx) => (
+                                    <div key={idx} style={{ width: 80, height: 80, background: '#eee', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <span style={{ fontSize: 10 }}>Sample</span>
+                                    </div>
+                                ))
+                            ) : <Text type="secondary" italic>No samples</Text>}
+                        </div>
                     </div>
                 </Col>
 
+                {/* DELIVERY REGION (Bottom/Right) - Interaction Zone */}
                 <Col span={10}>
-                    {renderWorkZone()}
+                    <div style={{
+                        height: '100%',
+                        background: (showSubmit || showClaim) ? '#f6ffed' : '#fff',
+                        borderRadius: 8,
+                        padding: 16,
+                        border: (showSubmit || showClaim) ? `1px dashed ${colors.successGreen}` : 'none'
+                    }}>
+                        {renderWorkZone()}
+                    </div>
                 </Col>
             </Row>
         </Modal>
