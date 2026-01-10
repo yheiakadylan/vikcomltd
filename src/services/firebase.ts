@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import type { Order } from '../types';
 
@@ -18,16 +18,18 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+export { orderBy, where };
 
 export const updateOrder = async (orderId: string, data: any) => {
     const orderRef = doc(db, 'orders', orderId);
     await updateDoc(orderRef, data);
 };
 
-export const subscribeToOrders = (callback: (orders: Order[]) => void) => {
+export const subscribeToOrders = (onData: (orders: Order[]) => void, onError?: (error: any) => void, constraints: any[] = []) => {
     const q = query(
         collection(db, 'orders'),
-        orderBy('created_at', 'desc') // Ensure field name matches creation. User snippet said 'createdAt', my NewTaskModal used 'created_at'.
+        orderBy('created_at', 'desc'),
+        ...constraints
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -35,9 +37,10 @@ export const subscribeToOrders = (callback: (orders: Order[]) => void) => {
             id: doc.id,
             ...doc.data()
         })) as Order[];
-        callback(orders);
+        onData(orders);
     }, (error) => {
         console.error("Error fetching realtime orders:", error);
+        if (onError) onError(error);
     });
 
     return unsubscribe;

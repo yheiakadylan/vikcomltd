@@ -1,5 +1,5 @@
 import React from 'react';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, App as AntdApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { themeConfig } from './theme/themeConfig';
@@ -15,19 +15,22 @@ const queryClient = new QueryClient();
 const App: React.FC = () => {
   return (
     <ConfigProvider theme={themeConfig}>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/admin" element={<Admin />} />
-              <Route path="/auth/dropbox/callback" element={<AuthCallback />} />
-              <Route path="/" element={<Dashboard />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </BrowserRouter>
-        </AuthProvider>
-      </QueryClientProvider>
+      <AntdApp>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/admin" element={<Admin />} />
+                <Route path="/auth/dropbox/callback" element={<AuthCallback />} />
+                <Route path="/:status" element={<Dashboard />} />
+                <Route path="/" element={<Navigate to="/new" replace />} />
+                <Route path="*" element={<Navigate to="/new" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </AuthProvider>
+        </QueryClientProvider>
+      </AntdApp>
     </ConfigProvider>
   );
 };
