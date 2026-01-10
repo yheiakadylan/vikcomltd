@@ -1,11 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Input, Checkbox, Button, message } from 'antd';
-import { colors } from '../../theme/themeConfig';
 import type { Order } from '../../types';
-import { updateDoc, doc } from 'firebase/firestore';
-import { db } from '../../services/firebase';
-
-const { TextArea } = Input;
+import { updateOrder } from '../../services/firebase';
 
 interface RejectModalProps {
     order: Order | null;
@@ -16,30 +12,31 @@ interface RejectModalProps {
 
 const RejectModal: React.FC<RejectModalProps> = ({ order, open, onCancel, onSuccess }) => {
     const [reason, setReason] = useState('');
-    const [isUrgent, setIsUrgent] = useState(true);
+    const [isUrgent, setIsUrgent] = useState(true); // Default Urgent
     const [loading, setLoading] = useState(false);
 
     const handleReject = async () => {
-        if (!order) return;
         if (!reason.trim()) {
-            message.error("Vui lòng nhập lý do từ chối!");
+            message.error('Vui lòng nhập lý do từ chối!');
             return;
         }
+        if (!order) return;
 
         setLoading(true);
         try {
-            await updateDoc(doc(db, "orders", order.id), {
+            await updateOrder(order.id, {
                 status: 'need_fix',
-                isUrgent: isUrgent,
-                // Append log logic could go here
-                description: order.description + `\n\n[REJECTED]: ${reason}` // Simple append for now
+                isUrgent: isUrgent, // Update Urgent flag
+                // Potentially append reason to logs or description
+                description: order.description + `\n\n[REJECTED]: ${reason}`
             });
-            message.success("Đã từ chối task!");
-            setReason('');
+            message.success('Đã trả đơn về Need Fix!');
             onSuccess();
-        } catch (e) {
-            console.error(e);
-            message.error("Lỗi khi từ chối task");
+            onCancel();
+            setReason('');
+        } catch (error) {
+            console.error(error);
+            message.error('Có lỗi xảy ra');
         } finally {
             setLoading(false);
         }
@@ -47,31 +44,37 @@ const RejectModal: React.FC<RejectModalProps> = ({ order, open, onCancel, onSucc
 
     return (
         <Modal
-            title={<span style={{ color: colors.urgentRed }}>Từ chối thiết kế (Reject)</span>}
+            title="Từ chối duyệt đơn"
             open={open}
             onCancel={onCancel}
             footer={[
-                <Button key="cancel" onClick={onCancel}>Hủy</Button>,
-                <Button key="submit" type="primary" danger loading={loading} onClick={handleReject}>
-                    Xác nhận Từ chối
-                </Button>
+                <Button key="back" onClick={onCancel}>Hủy</Button>,
+                <Button
+                    key="submit"
+                    type="primary"
+                    danger
+                    loading={loading}
+                    onClick={handleReject}
+                >
+                    Yêu cầu sửa
+                </Button>,
             ]}
         >
-            <p>Vui lòng nhập lý do để Designer chỉnh sửa:</p>
-            <TextArea
-                rows={4}
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Ví dụ: Font chữ chưa đúng, màu hơi nhạt..."
-                style={{ marginBottom: 16 }}
-            />
-            <Checkbox
-                checked={isUrgent}
-                onChange={(e) => setIsUrgent(e.target.checked)}
-                style={{ color: colors.urgentRed, fontWeight: 500 }}
-            >
-                Đánh dấu URGENT (Ưu tiên sửa gấp)
-            </Checkbox>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <Input.TextArea
+                    rows={4}
+                    placeholder="Nhập lý do sai sót (VD: Sai màu, sai font...)"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                />
+                <Checkbox
+                    checked={isUrgent}
+                    onChange={(e) => setIsUrgent(e.target.checked)}
+                    style={{ color: '#f5222d', fontWeight: 500 }}
+                >
+                    Đánh dấu là GẤP (Urgent) 🔥
+                </Checkbox>
+            </div>
         </Modal>
     );
 };

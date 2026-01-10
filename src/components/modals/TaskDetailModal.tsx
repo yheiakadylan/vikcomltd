@@ -1,19 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Row, Col, Typography, Tag, Button, Switch, Upload, message, Divider } from 'antd';
-import { FireOutlined, UploadOutlined } from '@ant-design/icons';
-import { colors } from '../../theme/themeConfig';
-import type { Order } from '../../types';
-import { useAuth } from '../../contexts/AuthContext';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../services/firebase';
-import { uploadFileToDropbox } from '../../services/dropbox';
+import { Modal, Form, Input, Select, InputNumber, DatePicker, Switch, Button, Upload, message, Tag, Row, Col } from 'antd';
+import { InboxOutlined, CloudUploadOutlined, FileOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import type { Order, FileAttachment } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
+import { updateOrder } from '../../services/firebase';
+import { uploadFileToDropbox } from '../../services/dropbox';
 
-import RejectModal from './RejectModal';
-import GiveBackModal from './GiveBackModal';
-
-const { Title, Text } = Typography;
 const { Dragger } = Upload;
+const { TextArea } = Input;
+
 
 interface TaskDetailModalProps {
     order: Order | null;
@@ -24,297 +20,223 @@ interface TaskDetailModalProps {
 
 const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel, onUpdate }) => {
     const { appUser } = useAuth();
-    const [loading, setLoading] = useState(false);
-    const [localUrgent, setLocalUrgent] = useState(false);
-    const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
-    const [showRejectModal, setShowRejectModal] = useState(false);
-    const [showGiveBackModal, setShowGiveBackModal] = useState(false);
+    const [form] = Form.useForm();
+    const [isUrgent, setIsUrgent] = useState(false);
+    const [designFiles, setDesignFiles] = useState<FileAttachment[]>([]);
+    const [uploading, setUploading] = useState(false);
+
+    // Check Role
+    const isCS = appUser?.role === 'CS' || appUser?.role === 'ADMIN';
+    const isDS = appUser?.role === 'DS';
+
+    // Check Status to show Delivery Zone
+    const canDSWork = isDS && (order?.status === 'doing' || order?.status === 'need_fix') && order?.designerId === appUser?.uid;
 
     useEffect(() => {
         if (order) {
-            setLocalUrgent(order.isUrgent);
-            setUploadedFiles([]); // Reset on new open
+            form.setFieldsValue({
+                ...order,
+                deadline: order.deadline ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline) : null,
+            });
+            setIsUrgent(order.isUrgent);
+            setDesignFiles(order.designFiles || []);
         }
-    }, [order]);
-
-    if (!order || !appUser) return null;
-
-    const isCS = appUser.role === 'CS' || appUser.role === 'ADMIN';
-    const isDS = appUser.role === 'DS';
-
-    // Logic: Who can do what?
-    // CS can edit Urgent always
-    // DS can only Submit if status is 'doing'
-    // CS can Approve/Reject if status is 'in_review'
-
-    const showClaim = isDS && order.status === 'new';
-    const showSubmit = isDS && (order.status === 'doing' || order.status === 'need_fix');
-    const showReview = isCS && order.status === 'in_review';
+    }, [order, form]);
 
     const handleUrgentToggle = async (checked: boolean) => {
-        if (!isCS) return;
-        setLocalUrgent(checked);
+        if (!isCS || !order) return;
+        setIsUrgent(checked);
         try {
-            await updateDoc(doc(db, "orders", order.id), { isUrgent: checked });
-            message.success("Priority updated");
+            await updateOrder(order.id, { isUrgent: checked });
+            message.success(checked ? 'Đã bật chế độ GẤP 🔥' : 'Đã tắt chế độ Gấp');
             onUpdate();
-        } catch (e) {
-            message.error("Failed to update priority");
-            setLocalUrgent(!checked); // Revert
+        } catch (error) {
+            message.error('Lỗi cập nhật');
+            setIsUrgent(!checked); // Revert
         }
     };
 
-    const handleClaim = async () => {
-        setLoading(true);
+    const handleDSSubmit = async () => {
+        if (!order) return;
         try {
-            await updateDoc(doc(db, "orders", order.id), {
-                status: 'doing',
-                designerId: appUser.uid
-            });
-            message.success("Nhận việc thành công!");
-            onUpdate();
-            onCancel();
-        } catch (e) {
-            console.error(e);
-            message.error("Failed to claim task");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleSubmit = async () => {
-        if (uploadedFiles.length === 0) {
-            message.error("Vui lòng upload file thiết kế!");
-            return;
-        }
-        setLoading(true);
-        try {
-            // Upload to Dropbox
-            const uploadPromises = uploadedFiles.map(async (file) => {
-                // Antd Upload file object sometimes wraps the native file in originFileObj, 
-                // or if it's drag/dropped it might be the file itself if we managed it differently.
-                // In our Dragger implementation in helper, we pushed 'file'.
-
-                // If using manual state management with beforeUpload returning false:
-                const fileToUpload = file.originFileObj || file;
-                // We need a specific folder for designs, let's put it in 'PROJECT/designs' or just same folder?
-                // Spec says: "Artist submit design (file png/psd) lên dropbox"
-                // Let's assume order.dropboxPath exists.
-                if (order.dropboxPath) {
-                    return uploadFileToDropbox(fileToUpload, order.dropboxPath + '/designs');
-                }
-                return null;
-            });
-
-            await Promise.all(uploadPromises);
-
-            // Prepare design files metadata
-            const newDesignFiles = uploadedFiles.map(f => f.name);
-
-            await updateDoc(doc(db, "orders", order.id), {
+            await updateOrder(order.id, {
                 status: 'in_review',
-                designFiles: newDesignFiles
+                designFiles: designFiles,
             });
-            message.success("Nộp bài thành công!");
+            message.success('Nộp bài thành công!');
             onUpdate();
             onCancel();
-        } catch (e) {
-            console.error(e);
-            message.error("Failed to submit (Dropbox upload or DB error)");
-        } finally {
-            setLoading(false);
+        } catch (error) {
+            message.error('Lỗi khi nộp bài');
         }
     };
 
-    const handleApprove = async () => {
-        setLoading(true);
+    const customUploadRequest = async (options: any) => {
+        const { file, onSuccess, onError } = options;
+        setUploading(true);
         try {
-            await updateDoc(doc(db, "orders", order.id), { status: 'done' });
-            message.success("Đã duyệt đơn hàng!");
-            onUpdate();
-            onCancel();
-        } catch (e) {
-            message.error("Failed to approve");
-        } finally {
-            setLoading(false);
+            if (!order) throw new Error("No order");
+
+            const dropboxLink = await uploadFileToDropbox(file, `${order.dropboxPath}/designs/${file.name}`);
+            const linkStr = (dropboxLink as any).path_display || '#';
+            const newFile: FileAttachment = { name: file.name, link: linkStr };
+
+            setDesignFiles(prev => [...prev, newFile]);
+            setUploading(false);
+            onSuccess("Ok");
+            message.success(`Đã upload ${file.name} lên Dropbox`);
+        } catch (err) {
+            setUploading(false);
+            onError(err);
+            message.error('Upload thất bại');
+            console.error(err);
         }
-    };
-
-
-
-    // Render Work Zone (Right Column)
-    const renderWorkZone = () => {
-        if (showClaim) {
-            return (
-                <div style={{ textAlign: 'center', padding: 40, background: '#f9f9f9', borderRadius: 8 }}>
-                    <Button type="primary" size="large" onClick={handleClaim} loading={loading}>
-                        CLAIM THIS TASK
-                    </Button>
-                </div>
-            );
-        }
-
-        if (showSubmit) {
-            return (
-                <div style={{ marginTop: 24 }}>
-                    <Title level={5}>Nộp bài (Submit via Dropbox)</Title>
-                    <Dragger
-                        multiple
-                        fileList={uploadedFiles}
-                        beforeUpload={(file) => {
-                            setUploadedFiles([...uploadedFiles, file]);
-                            return false;
-                        }}
-                        onRemove={(file) => setUploadedFiles(uploadedFiles.filter(f => f.uid !== file.uid))}
-                        style={{ background: '#f6ffed', borderColor: colors.successGreen }}
-                    >
-                        <p className="ant-upload-drag-icon">
-                            <UploadOutlined style={{ color: colors.successGreen }} />
-                        </p>
-                        <p className="ant-upload-text">Kéo thả file Final vào đây</p>
-                    </Dragger>
-                    <Button
-                        type="primary"
-                        block
-                        size="large"
-                        style={{ marginTop: 16, background: colors.primaryPink }}
-                        onClick={handleSubmit}
-                        loading={loading}
-                        disabled={uploadedFiles.length === 0}
-                    >
-                        SUBMIT DESIGN
-                    </Button>
-                </div>
-            );
-        }
-
-        if (showReview) {
-            return (
-                <div style={{ textAlign: 'center' }}>
-                    <div style={{ marginBottom: 24, padding: 16, border: '1px dashed #d9d9d9', borderRadius: 8 }}>
-                        <Text type="secondary">Files submitted: {order.designFiles?.length || 0}</Text>
-                        <div style={{ marginTop: 8 }}>
-                            {order.designFiles?.map((f, i) => <div key={i}><Text code>{f}</Text></div>)}
-                        </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 16 }}>
-                        <Button danger size="large" onClick={() => setShowRejectModal(true)} loading={loading} style={{ flex: 1 }}>REJECT (Fix)</Button>
-                        <Button type="primary" size="large" onClick={handleApprove} loading={loading} style={{ background: colors.successGreen, flex: 1 }}>APPROVE</Button>
-                    </div>
-                </div>
-            );
-        }
-
-        return <div style={{ padding: 20, textAlign: 'center', color: '#ccc' }}>Read Only Mode</div>;
     };
 
     return (
         <Modal
             open={open}
             onCancel={onCancel}
-            footer={null}
             width={900}
-            style={{ top: 20 }}
-        >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                <div>
-                    <Tag color="blue">#{order.readableId}</Tag>
-                    <Text type="secondary">ID</Text>
-                    <Title level={4} style={{ margin: '8px 0 0' }}>{order.title}</Title>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <Switch
-                        checked={localUrgent}
-                        onChange={handleUrgentToggle}
-                        disabled={!isCS} // Only CS can toggle
-                        checkedChildren={<FireOutlined />}
-                        unCheckedChildren={<FireOutlined />}
-                        style={{ background: localUrgent ? colors.urgentRed : undefined }}
-                    />
-                    {localUrgent && <Text strong style={{ color: colors.urgentRed }}>URGENT</Text>}
-                </div>
-            </div>
-
-            {/* Other Modals */}
-            <RejectModal
-                order={order}
-                open={showRejectModal}
-                onCancel={() => setShowRejectModal(false)}
-                onSuccess={() => {
-                    setShowRejectModal(false);
-                    onUpdate();
-                    onCancel();
-                }}
-            />
-
-            <GiveBackModal
-                order={order}
-                open={showGiveBackModal}
-                onCancel={() => setShowGiveBackModal(false)}
-                onSuccess={() => {
-                    setShowGiveBackModal(false);
-                    onUpdate();
-                    onCancel();
-                }}
-            />
-
-            <Row gutter={24} style={{ height: 'calc(100vh - 200px)', overflowY: 'auto' }}>
-                {/* INFO REGION (Top/Left) - Read Only for DS */}
-                <Col span={14} style={{ borderRight: '1px solid #f0f0f0', paddingRight: 24 }}>
-                    <div style={{ pointerEvents: isDS ? 'none' : 'auto', opacity: isDS ? 0.9 : 1 }}>
-                        <div style={{ marginBottom: 24 }}>
-                            <Text type="secondary">Description</Text>
-                            <div style={{ background: '#fafafa', padding: 12, borderRadius: 8, marginTop: 8, minHeight: 100, border: '1px solid #f0f0f0' }}>
-                                {order.description}
-                            </div>
+            title={
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <span style={{ color: '#8c8c8c' }}>#{order?.readableId}</span>
+                    <span style={{ fontWeight: 'bold', fontSize: 18 }}>{order?.title}</span>
+                    {isCS && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 16 }}>
+                            <span style={{ fontSize: 14, color: isUrgent ? '#f5222d' : '#bfbfbf', fontWeight: isUrgent ? 'bold' : 'normal' }}>
+                                {isUrgent ? 'URGENT 🔥' : 'Urgent Mode'}
+                            </span>
+                            <Switch
+                                checked={isUrgent}
+                                onChange={handleUrgentToggle}
+                                style={{ background: isUrgent ? '#f5222d' : undefined }}
+                            />
                         </div>
+                    )}
+                    {isDS && isUrgent && <Tag color="red" style={{ marginLeft: 16 }}>URGENT 🔥</Tag>}
+                </div>
+            }
+            footer={null}
+            className={isUrgent ? 'urgent-modal-border' : ''}
+        >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
+                {/* --- KHU VỰC 1: CS ZONE (INPUT) --- */}
+                <div style={{ padding: 16, borderRadius: 8, border: isCS ? '1px solid #fff0f6' : '1px solid #f0f0f0', background: isCS ? '#fff' : '#fafafa' }}>
+                    <div style={{ marginBottom: 8, fontWeight: 'bold', color: '#c41d7f', textTransform: 'uppercase', fontSize: 12 }}>Thông tin yêu cầu</div>
+                    <Form form={form} layout="vertical" disabled={!isCS}>
                         <Row gutter={16}>
                             <Col span={12}>
-                                <div style={{ background: '#fff0f6', padding: 12, borderRadius: 8 }}>
-                                    <Text type="secondary">Quantity</Text>
-                                    <div style={{ fontSize: 18, fontWeight: 600 }}>{order.quantity}</div>
-                                </div>
+                                <Form.Item name="title" label="Task Title">
+                                    <Input />
+                                </Form.Item>
                             </Col>
                             <Col span={12}>
-                                <div style={{ background: '#fff0f6', padding: 12, borderRadius: 8 }}>
-                                    <Text type="secondary">Deadline</Text>
-                                    <div style={{ fontSize: 18, fontWeight: 600 }}>
-                                        {order.deadline ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline).format('DD/MM HH:mm') : 'N/A'}
-                                    </div>
-                                </div>
+                                <Form.Item name="sku" label="SKU (Mã SP)">
+                                    <Input placeholder="Optional" />
+                                </Form.Item>
                             </Col>
                         </Row>
+                        <Row gutter={16}>
+                            <Col span={8}>
+                                <Form.Item name="category" label="Category">
+                                    <Select>
+                                        <Select.Option value="T-shirt">T-shirt</Select.Option>
+                                        <Select.Option value="Hoodie">Hoodie</Select.Option>
+                                        <Select.Option value="Mug">Mug</Select.Option>
+                                    </Select>
+                                </Form.Item>
+                            </Col>
+                            <Col span={8}>
+                                <Form.Item name="quantity" label="Quantity">
+                                    <InputNumber min={1} style={{ width: '100%' }} />
+                                </Form.Item>
+                            </Col>
+                            <Col span={8}>
+                                <Form.Item name="deadline" label="Deadline">
+                                    <DatePicker style={{ width: '100%' }} showTime format="DD/MM/YYYY HH:mm" />
+                                </Form.Item>
+                            </Col>
+                        </Row>
+                        <Form.Item name="description" label="Description">
+                            <TextArea rows={4} />
+                        </Form.Item>
 
-                        <Divider />
-
-                        <Title level={5}>Sample Files</Title>
-                        {/* Placeholder for Sample Images */}
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {order.sampleFiles && order.sampleFiles.length > 0 ? (
-                                order.sampleFiles.map((_, idx) => (
-                                    <div key={idx} style={{ width: 80, height: 80, background: '#eee', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <span style={{ fontSize: 10 }}>Sample</span>
-                                    </div>
-                                ))
-                            ) : <Text type="secondary" italic>No samples</Text>}
+                        {/* Sample Files Area */}
+                        <div>
+                            <div style={{ color: '#8c8c8c', fontSize: 14, marginBottom: 8 }}>Ảnh mẫu (Idea):</div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                {order?.sampleFiles?.map((f, idx) => (
+                                    <a key={idx} href={f.link} target="_blank" rel="noreferrer" style={{ display: 'block', padding: 8, border: '1px solid #d9d9d9', borderRadius: 4, color: '#1890ff', textDecoration: 'none', background: '#fff' }}>
+                                        <FileOutlined /> {f.name}
+                                    </a>
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                </Col>
+                    </Form>
+                </div>
 
-                {/* DELIVERY REGION (Bottom/Right) - Interaction Zone */}
-                <Col span={10}>
-                    <div style={{
-                        height: '100%',
-                        background: (showSubmit || showClaim) ? '#f6ffed' : '#fff',
-                        borderRadius: 8,
-                        padding: 16,
-                        border: (showSubmit || showClaim) ? `1px dashed ${colors.successGreen}` : 'none'
-                    }}>
-                        {renderWorkZone()}
+                {/* --- KHU VỰC 2: DS ZONE (DELIVERY) --- */}
+                {(canDSWork || (order?.designFiles && order.designFiles.length > 0)) && (
+                    <div style={{ padding: 16, borderRadius: 8, border: '2px dashed #b7eb8f', background: '#f6ffed' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                            <div style={{ fontWeight: 'bold', color: '#389e0d', textTransform: 'uppercase', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <CloudUploadOutlined style={{ fontSize: 18 }} /> KHU VỰC NỘP BÀI (DS ONLY)
+                            </div>
+                            {canDSWork && (
+                                <Button
+                                    type="primary"
+                                    onClick={handleDSSubmit}
+                                    disabled={designFiles.length === 0}
+                                    style={{ background: '#eb2f96', borderColor: '#eb2f96' }}
+                                >
+                                    SUBMIT (Nộp bài)
+                                </Button>
+                            )}
+                        </div>
+
+                        {canDSWork ? (
+                            <Dragger
+                                customRequest={customUploadRequest}
+                                showUploadList={false}
+                                multiple
+                            >
+                                <p className="ant-upload-drag-icon">
+                                    <InboxOutlined style={{ color: '#52c41a' }} />
+                                </p>
+                                <p className="ant-upload-text">Kéo thả file thiết kế Final vào đây</p>
+                                <p className="ant-upload-hint">
+                                    Hỗ trợ PNG, PSD, AI. File sẽ tự động lưu lên Dropbox.
+                                </p>
+                            </Dragger>
+                        ) : (
+                            <div style={{ color: '#8c8c8c', fontStyle: 'italic' }}>DS chưa nộp bài hoặc bạn không có quyền nộp.</div>
+                        )}
+
+                        {/* List Submitted Files */}
+                        {designFiles.length > 0 && (
+                            <div style={{ marginTop: 16, background: '#fff', padding: 12, borderRadius: 4, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                                <div style={{ fontWeight: 600, marginBottom: 8 }}>Files đã nộp:</div>
+                                {designFiles.map((file, index) => (
+                                    <div key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f0f0f0' }}>
+                                        <a href={file.link} target="_blank" rel="noreferrer" style={{ color: '#1890ff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <FileOutlined /> {file.name}
+                                        </a>
+                                        {canDSWork && (
+                                            <Button type="text" danger size="small" onClick={() => {
+                                                setDesignFiles(prev => prev.filter((_, i) => i !== index));
+                                            }}>Xóa</Button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {uploading && <div style={{ textAlign: 'center', marginTop: 8, color: '#eb2f96' }}>Đang upload lên Dropbox...</div>}
                     </div>
-                </Col>
-            </Row>
+                )}
+            </div>
         </Modal>
     );
 };

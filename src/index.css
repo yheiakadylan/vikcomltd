@@ -14,10 +14,18 @@ body {
   width: 8px;
   height: 8px;
 }
+
 ::-webkit-scrollbar-thumb {
   background: #ccc;
   border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: #EB2F96;
+}
+
+/* Urgent Modal Style */
+.urgent-modal-border .ant-modal-content {
+  border: 3px solid #f5222d !important;
+  box-shadow: 0 0 20px rgba(245, 34, 45, 0.3);
 }
