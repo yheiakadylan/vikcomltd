@@ -1,73 +1,48 @@
-# React + TypeScript + Vite
+# Pink POD System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A comprehensive Order Management System for Print-on-Demand (POD) workflows, designed with a modern, feminine, and professional aesthetic ("Pink POD").
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Role-Based Access Control (RBAC)**:
+  - **CS (Customer Support)**: Create tasks, manage orders, approve/reject designs.
+  - **DS (Designer)**: Claim tasks, upload designs, view priorities.
+  - **Admin**: Full system access.
+- **Task Management**:
+  - Kanban-style status tracking (New, Doing, In Review, Need Fix, Done).
+  - Urgent priority handling with visual cues.
+  - Real-time updates via Firebase Firestore.
+- **Dropbox Integration**:
+  - Seamless authentication.
+  - Direct file uploads for Sample files (CS) and Designs (DS).
+  - Organized folder structure (`/PINK/{YEAR}/{ORDER_ID}`).
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Frontend**: React, TypeScript, Vite
+- **UI Framework**: Ant Design (Customized Theme)
+- **Backend & Auth**: Firebase (Auth, Firestore)
+- **Storage**: Dropbox API v2
 
-## Expanding the ESLint configuration
+## Setup
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+1.  Clone the repository.
+2.  Install dependencies: `npm install`.
+3.  Configure environment variables in `.env`:
+    ```
+    VITE_DROPBOX_APP_KEY=your_app_key
+    // Add Firebase config in src/services/firebase.ts or .env if refactored
+    ```
+4.  Run locally: `npm run dev`.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Project Structure
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- `/src/components/modals`: Core interaction modals (New Task, Task Detail).
+- `/src/pages`: Main views (Login, Dashboard, Admin).
+- `/src/services`: API integrations (Firebase, Dropbox).
+- `/src/contexts`: Global state (Auth).
+- `/src/theme`: Design system configuration.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## License
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Private / Proprietary.
