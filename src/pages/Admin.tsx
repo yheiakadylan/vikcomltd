@@ -1,25 +1,218 @@
-import React from 'react';
-import { Layout, Typography, Table, Button } from 'antd';
-import { colors } from '../theme/themeConfig';
+import React, { useState, useEffect } from 'react';
+import { Layout, Tabs, Table, Button, Modal, Form, Input, Select, Tag, Card, App } from 'antd';
+import { PlusOutlined, DropboxOutlined, CheckCircleFilled } from '@ant-design/icons';
+import { getUsers, createUserProfile } from '../services/firebase';
+import { getDropboxAuthUrl, checkDropboxConnection } from '../services/dropbox';
+import { useAuth } from '../contexts/AuthContext';
+import type { User } from '../types';
 
 const { Header, Content } = Layout;
-const { Title } = Typography;
 
 const Admin: React.FC = () => {
+    const { message } = App.useApp();
+    const { appUser: user } = useAuth();
+    const [users, setUsers] = useState<User[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [dropboxConnected, setDropboxConnected] = useState(false);
+    const [form] = Form.useForm();
+
+    useEffect(() => {
+        if (user) {
+            fetchUsers();
+            checkDropbox();
+        }
+    }, [user]);
+
+    const fetchUsers = async () => {
+        setLoading(true);
+        try {
+            const data = await getUsers();
+            setUsers(data);
+        } catch (error) {
+            console.error(error);
+            message.error('Lỗi tải danh sách nhân viên');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const checkDropbox = async () => {
+        const isConnected = await checkDropboxConnection();
+        setDropboxConnected(isConnected);
+    };
+
+    const handleCreateUser = async (values: any) => {
+        try {
+            const newUser: User = {
+                uid: values.email,
+                email: values.email,
+                displayName: values.displayName,
+                role: values.role,
+                isActive: true,
+                avatar: `https://ui-avatars.com/api/?name=${values.displayName}&background=random`,
+                avatarUrl: `https://ui-avatars.com/api/?name=${values.displayName}&background=random`
+            };
+
+            await createUserProfile(newUser);
+            message.success('Tạo nhân viên thành công!');
+            setIsModalOpen(false);
+            form.resetFields();
+            fetchUsers();
+        } catch (error) {
+            console.error(error);
+            message.error('Lỗi khi tạo nhân viên');
+        }
+    };
+
+    const handleConnectDropbox = async () => {
+        try {
+            const authUrl = await getDropboxAuthUrl();
+            window.location.href = authUrl as string;
+        } catch (error) {
+            console.error(error);
+            message.error("Không lấy được URL xác thực Dropbox");
+        }
+    };
+
+    const columns = [
+        {
+            title: 'Tên hiển thị',
+            dataIndex: 'displayName',
+            key: 'displayName',
+            render: (text: string, record: User) => (
+                <div className="flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <img src={record.avatar || record.avatarUrl} alt="avatar" style={{ width: 32, height: 32, borderRadius: '50%' }} />
+                    <span style={{ fontWeight: 500 }}>{text}</span>
+                </div>
+            )
+        },
+        {
+            title: 'Email',
+            dataIndex: 'email',
+            key: 'email',
+        },
+        {
+            title: 'Vai trò',
+            dataIndex: 'role',
+            key: 'role',
+            render: (role: string) => {
+                let color = role === 'ADMIN' ? 'red' : role === 'CS' ? 'blue' : 'green';
+                return <Tag color={color}>{role}</Tag>;
+            }
+        },
+        {
+            title: 'Trạng thái',
+            dataIndex: 'isActive',
+            key: 'isActive',
+            render: (active: boolean) => (
+                active ? <Tag color="success">Active</Tag> : <Tag color="default">Locked</Tag>
+            )
+        }
+    ];
+
+    const UserManagementTab = () => (
+        <div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)}>
+                    Thêm Nhân Viên
+                </Button>
+            </div>
+            <Table
+                columns={columns}
+                dataSource={users}
+                rowKey="uid"
+                loading={loading}
+                pagination={{ pageSize: 10 }}
+            />
+        </div>
+    );
+
+    const SystemConfigTab = () => (
+        <div style={{ maxWidth: 672, margin: '0 auto' }}>
+            <Card title="Kết nối lưu trữ (Dropbox)" className="shadow-md">
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, padding: '32px 0' }}>
+                    <div style={{ textAlign: 'center' }}>
+                        {dropboxConnected ? (
+                            <CheckCircleFilled style={{ fontSize: 64, color: '#52c41a' }} />
+                        ) : (
+                            <DropboxOutlined style={{ fontSize: 64, color: '#0061FE' }} />
+                        )}
+                        <h3 style={{ marginTop: 16, fontSize: 20, fontWeight: 600 }}>
+                            {dropboxConnected ? 'Đã kết nối Dropbox' : 'Chưa kết nối Dropbox'}
+                        </h3>
+                        <p style={{ color: '#8c8c8c', marginTop: 8 }}>
+                            {dropboxConnected
+                                ? 'Hệ thống đã sẵn sàng upload file.'
+                                : 'Cần kết nối để tính năng upload file hoạt động.'}
+                        </p>
+                    </div>
+
+                    {!dropboxConnected ? (
+                        <Button
+                            type="primary"
+                            size="large"
+                            icon={<DropboxOutlined />}
+                            onClick={handleConnectDropbox}
+                            style={{ background: '#0061FE', borderColor: '#0061FE' }}
+                        >
+                            Kết nối ngay
+                        </Button>
+                    ) : (
+                        <Button danger onClick={() => {
+                            localStorage.removeItem('dropbox_access_token');
+                            localStorage.removeItem('dropbox_refresh_token');
+                            setDropboxConnected(false);
+                            message.success("Đã ngắt kết nối");
+                        }}>
+                            Ngắt kết nối
+                        </Button>
+                    )}
+                </div>
+            </Card>
+        </div>
+    );
+
     return (
-        <Layout style={{ minHeight: '100vh', background: '#f5f5f5' }}>
-            <Header style={{ background: '#fff', padding: '0 24px' }}>
-                <Title level={4} style={{ margin: '14px 0', color: colors.primaryPink }}>Admin Settings</Title>
+        <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+            <Header style={{ background: '#fff', padding: '0 24px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 20, fontWeight: 'bold' }}>Admin Panel</div>
             </Header>
             <Content style={{ padding: 24 }}>
-                <div style={{ background: '#fff', padding: 24, borderRadius: 8 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                        <Title level={5}>User Management</Title>
-                        <Button type="primary">Add User</Button>
-                    </div>
-                    <Table columns={[{ title: 'Name', dataIndex: 'name' }, { title: 'Role', dataIndex: 'role' }]} dataSource={[]} />
+                <div style={{ background: '#fff', padding: 24, borderRadius: 8, minHeight: 500 }}>
+                    <Tabs items={[
+                        { key: '1', label: 'Quản lý Nhân sự', children: <UserManagementTab /> },
+                        { key: '2', label: 'Cấu hình Hệ thống', children: <SystemConfigTab /> },
+                    ]} />
                 </div>
             </Content>
+
+            <Modal
+                title="Thêm nhân viên mới"
+                open={isModalOpen}
+                onCancel={() => setIsModalOpen(false)}
+                footer={null}
+            >
+                <Form form={form} layout="vertical" onFinish={handleCreateUser}>
+                    <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
+                        <Input placeholder="example@pinkpod.com" />
+                    </Form.Item>
+                    <Form.Item name="displayName" label="Tên hiển thị" rules={[{ required: true }]}>
+                        <Input placeholder="Nguyễn Văn A" />
+                    </Form.Item>
+                    <Form.Item name="role" label="Vai trò" rules={[{ required: true }]}>
+                        <Select>
+                            <Select.Option value="CS">CS (Customer Service)</Select.Option>
+                            <Select.Option value="DS">DS (Designer)</Select.Option>
+                            <Select.Option value="ADMIN">Admin</Select.Option>
+                        </Select>
+                    </Form.Item>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+                        <Button onClick={() => setIsModalOpen(false)}>Hủy</Button>
+                        <Button type="primary" htmlType="submit">Tạo mới</Button>
+                    </div>
+                </Form>
+            </Modal>
         </Layout>
     );
 };

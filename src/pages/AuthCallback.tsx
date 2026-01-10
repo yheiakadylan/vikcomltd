@@ -1,41 +1,38 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { message, Spin } from 'antd';
-import { handleAuthCallback } from '../services/dropbox';
+import React, { useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { App, Spin } from 'antd';
+import { handleDropboxCallback } from '../services/dropbox';
 import { colors } from '../theme/themeConfig';
 
 const AuthCallback: React.FC = () => {
     const navigate = useNavigate();
-    const [processing, setProcessing] = useState(true);
-
-    if (!processing) return null; // Or fragment, since we are navigating away anyway
+    const [searchParams] = useSearchParams();
+    const { message } = App.useApp();
 
     useEffect(() => {
         const processAuth = async () => {
-            try {
-                const success = handleAuthCallback();
-                if (success) {
+            const code = searchParams.get('code');
+            if (code) {
+                try {
+                    await handleDropboxCallback(code);
                     message.success('Connected to Dropbox successfully!');
-                } else {
-                    // Check if error in URL
-                    const hash = window.location.hash;
-                    if (hash.includes('error=')) {
-                        message.error('Dropbox authentication failed.');
-                    } else {
-                        message.warning('No access token found.');
-                    }
+                    // Navigate to Admin or Dashboard? Usually Admin since they clicked 'Connect' there.
+                    // But we don't know where they came from without state.
+                    // Default to /admin seems safer if that's where config is.
+                    navigate('/admin');
+                } catch (error) {
+                    console.error(error);
+                    message.error('Dropbox connection failed.');
+                    navigate('/admin');
                 }
-            } catch (error) {
-                console.error(error);
-                message.error('An error occurred during authentication.');
-            } finally {
-                setProcessing(false);
-                navigate('/'); // Go back to dashboard
+            } else {
+                message.error('No authorization code found.');
+                navigate('/admin');
             }
         };
 
         processAuth();
-    }, [navigate]);
+    }, [navigate, searchParams, message]);
 
     return (
         <div style={{

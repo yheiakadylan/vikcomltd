@@ -6,7 +6,11 @@ export interface AppUser {
     displayName: string;
     role: Role;
     avatar?: string;
+    isActive?: boolean; // Added
 }
+
+export type User = AppUser & { avatarUrl?: string }; // Alias for Admin component compatibility or migration
+
 
 export type OrderStatus = 'draft' | 'new' | 'doing' | 'in_review' | 'need_fix' | 'done' | 'archived';
 

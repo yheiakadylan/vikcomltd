@@ -1,58 +1,133 @@
 import { Dropbox, DropboxAuth } from 'dropbox';
 
-const APP_KEY = import.meta.env.VITE_DROPBOX_APP_KEY;
-// Note: App Secret is rarely used in client-side only apps due to security, 
-// but we prepare the config. For implicit/PKCE, usually just ClientId (App Key) is needed.
+const CLIENT_ID = import.meta.env.VITE_DROPBOX_APP_KEY;
 
-let dbx: Dropbox | null = null;
-let accessToken: string | null = localStorage.getItem('dropbox_access_token');
-
-export const initializeDropbox = () => {
-    if (accessToken) {
-        dbx = new Dropbox({ accessToken });
-    }
+// Initialize DropboxAuth
+const getDbxAuth = () => {
+    return new DropboxAuth({
+        clientId: CLIENT_ID,
+    });
 };
 
-export const getAuthUrl = async () => {
-    const dbxAuth = new DropboxAuth({ clientId: APP_KEY });
-    // Using implicit flow for simplicity in this demo, or we could use PKCE
-    // Redirect URI must be set in Dropbox App Console to match window.location.origin
-    const authUrl = await dbxAuth.getAuthenticationUrl(window.location.origin + '/auth/dropbox/callback');
+export const getDropboxAuthUrl = async () => {
+    const dbxAuth = getDbxAuth();
+    // PKCE flow for Refresh Token ('offline' access)
+    // redirectUri must match what's in Dropbox Console exactly
+    const redirectUri = window.location.origin + '/auth/dropbox/callback';
+
+    // Generates a code_verifier and saves it to sessionStorage automatically by SDK default behavior if implicit? 
+    // Wait, getAuthenticationUrl writes to sessionStorage? Yes, if using PKCE.
+    const authUrl = await dbxAuth.getAuthenticationUrl(
+        redirectUri,
+        undefined,
+        'code',
+        'offline',
+        undefined,
+        undefined,
+        true // usePKCE
+    );
     return authUrl;
 };
 
-export const handleAuthCallback = () => {
-    // Logic to parse URL hash to get token
-    const hash = window.location.hash;
-    if (hash.includes('access_token')) {
-        const params = new URLSearchParams(hash.substring(1));
-        const token = params.get('access_token');
-        if (token) {
-            accessToken = token;
-            localStorage.setItem('dropbox_access_token', token);
-            dbx = new Dropbox({ accessToken });
-            return true;
-        }
+export const handleDropboxCallback = async (code: string) => {
+    const dbxAuth = getDbxAuth();
+    const redirectUri = window.location.origin + '/auth/dropbox/callback';
+
+    // Recovery for PKCE: Retrieve verifier stored by getAuthenticationUrl
+    // SDK default key is 'dropbox-code-verifier'
+    const storedVerifier = window.sessionStorage.getItem('dropbox-code-verifier');
+    if (storedVerifier) {
+        dbxAuth.setCodeVerifier(storedVerifier);
     }
-    return false;
+
+    // Exchange code for tokens (PKCE)
+    const response = await dbxAuth.getAccessTokenFromCode(redirectUri, code);
+
+    const { access_token, refresh_token, expires_in } = response.result as any;
+
+    if (access_token) localStorage.setItem('dropbox_access_token', access_token);
+    if (refresh_token) localStorage.setItem('dropbox_refresh_token', refresh_token);
+    if (expires_in) {
+        const expiresAt = Date.now() + (expires_in * 1000);
+        localStorage.setItem('dropbox_expires_at', expiresAt.toString());
+    }
+
+    return response.result;
+};
+
+export const checkDropboxConnection = async () => {
+    const accessToken = localStorage.getItem('dropbox_access_token');
+    const refreshToken = localStorage.getItem('dropbox_refresh_token');
+    return !!(accessToken || refreshToken);
+};
+
+export const getDbxClient = async () => {
+    const accessToken = localStorage.getItem('dropbox_access_token');
+    const refreshToken = localStorage.getItem('dropbox_refresh_token');
+    const expiresAt = localStorage.getItem('dropbox_expires_at');
+
+    if (!accessToken && !refreshToken) {
+        throw new Error("Dropbox not connected");
+    }
+
+    const dbxAuth = getDbxAuth();
+
+    // Check if token expired
+    if (expiresAt && Date.now() > parseInt(expiresAt) && refreshToken) {
+        // Refresh token
+        dbxAuth.setRefreshToken(refreshToken);
+        const response = await dbxAuth.refreshAccessToken() as any;
+
+        const newAccess = response.result.access_token;
+        const newExpiresIn = response.result.expires_in;
+
+        localStorage.setItem('dropbox_access_token', newAccess);
+        localStorage.setItem('dropbox_expires_at', (Date.now() + (newExpiresIn * 1000)).toString());
+
+        dbxAuth.setAccessToken(newAccess);
+    } else {
+        dbxAuth.setAccessToken(accessToken || '');
+    }
+
+    return new Dropbox({ auth: dbxAuth });
 };
 
 export const uploadFileToDropbox = async (file: File, path: string) => {
-    if (!dbx) {
-        throw new Error("Dropbox not authenticated");
-    }
-
     try {
+        const dbx = await getDbxClient();
+
+        // 1. Upload File
         const response = await dbx.filesUpload({
-            path: path + '/' + file.name,
+            path: path, // Full path e.g. /Orders/123/img.png
             contents: file,
             mode: { '.tag': 'overwrite' }
         });
-        return response.result;
+
+        // 2. Create Shared Link (for viewing)
+        // Access via result.path_display
+        const filePath = response.result.path_display;
+        if (!filePath) throw new Error("Upload failed, no path returned");
+
+        // Try getting existing shared link or create new
+        try {
+            const linkResponse = await dbx.sharingCreateSharedLinkWithSettings({
+                path: filePath
+            });
+            return linkResponse.result; // contains .url
+        } catch (linkError: any) {
+            // Check if link already exists
+            if (linkError?.error?.['.tag'] === 'shared_link_already_exists') {
+                const existingLink = await dbx.sharingListSharedLinks({
+                    path: filePath,
+                    direct_only: true
+                });
+                return existingLink.result.links[0];
+            }
+            throw linkError;
+        }
+
     } catch (error) {
         console.error("Dropbox Upload Error:", error);
         throw error;
     }
 };
-
-export const isAuthenticated = () => !!accessToken;

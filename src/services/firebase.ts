@@ -1,8 +1,8 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import type { Order } from '../types';
+import type { Order, User } from '../types';
 
 const firebaseConfig = {
     apiKey: "AIzaSyCMfkDrGBzVa2ungr5iX8VDNpfdssw1RhA",
@@ -23,6 +23,17 @@ export { orderBy, where };
 export const updateOrder = async (orderId: string, data: any) => {
     const orderRef = doc(db, 'orders', orderId);
     await updateDoc(orderRef, data);
+};
+
+export const getUsers = async (): Promise<User[]> => {
+    const q = query(collection(db, 'users'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => doc.data() as User);
+};
+
+export const createUserProfile = async (user: User) => {
+    if (!user.uid) throw new Error("User UID required");
+    await setDoc(doc(db, 'users', user.uid), user);
 };
 
 export const subscribeToOrders = (onData: (orders: Order[]) => void, onError?: (error: any) => void, constraints: any[] = []) => {
