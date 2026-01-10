@@ -129,6 +129,7 @@ const Dashboard: React.FC = () => {
             await updateOrder(order.id, {
                 status: 'doing',
                 designerId: user?.uid,
+                updatedAt: new Date()
             });
             message.success(`Đã nhận đơn #${order.readableId}.`);
             // The subscription will check constraints. 

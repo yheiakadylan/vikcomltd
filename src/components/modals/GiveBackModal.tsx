@@ -22,7 +22,8 @@ const GiveBackModal: React.FC<GiveBackModalProps> = ({ order, open, onCancel, on
         try {
             await updateDoc(doc(db, "orders", order.id), {
                 status: 'new',
-                designerId: null
+                designerId: null,
+                updatedAt: new Date()
             });
             message.success("Đã trả lại task!");
             onSuccess();

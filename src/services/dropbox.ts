@@ -26,6 +26,13 @@ export const getDropboxAuthUrl = async () => {
         undefined,
         true // usePKCE
     );
+
+    // Explicitly save PKCE verifier
+    const verifier = (dbxAuth as any).codeVerifier;
+    if (verifier) {
+        window.localStorage.setItem('minph_dropbox_verifier', verifier);
+    }
+
     return authUrl;
 };
 
@@ -34,8 +41,7 @@ export const handleDropboxCallback = async (code: string) => {
     const redirectUri = window.location.origin + '/auth/dropbox/callback';
 
     // Recovery for PKCE: Retrieve verifier stored by getAuthenticationUrl
-    // SDK default key is 'dropbox-code-verifier'
-    const storedVerifier = window.sessionStorage.getItem('dropbox-code-verifier');
+    const storedVerifier = window.localStorage.getItem('minph_dropbox_verifier');
     if (storedVerifier) {
         dbxAuth.setCodeVerifier(storedVerifier);
     }
@@ -90,6 +96,17 @@ export const getDbxClient = async () => {
     }
 
     return new Dropbox({ auth: dbxAuth });
+};
+
+export const getDropboxAccountInfo = async () => {
+    try {
+        const dbx = await getDbxClient();
+        const response = await dbx.usersGetCurrentAccount();
+        return response.result;
+    } catch (error) {
+        console.error("Error fetching account info:", error);
+        return null;
+    }
 };
 
 export const uploadFileToDropbox = async (file: File, path: string) => {

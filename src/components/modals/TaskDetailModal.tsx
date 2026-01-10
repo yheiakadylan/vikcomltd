@@ -62,6 +62,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
             await updateOrder(order.id, {
                 status: 'in_review',
                 designFiles: designFiles,
+                updatedAt: new Date(),
             });
             message.success('Nộp bài thành công!');
             onUpdate();

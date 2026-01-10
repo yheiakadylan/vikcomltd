@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Tabs, Table, Button, Modal, Form, Input, Select, Tag, Card, App } from 'antd';
-import { PlusOutlined, DropboxOutlined, CheckCircleFilled } from '@ant-design/icons';
+import { Layout, Tabs, Table, Button, Modal, Form, Input, Select, Tag, Card, App, Popconfirm, Avatar, Spin } from 'antd';
+import { PlusOutlined, DropboxOutlined, CheckCircleFilled, UserOutlined } from '@ant-design/icons';
 import { getUsers, createUserProfile } from '../services/firebase';
-import { getDropboxAuthUrl, checkDropboxConnection } from '../services/dropbox';
+import { getDropboxAuthUrl, checkDropboxConnection, getDropboxAccountInfo } from '../services/dropbox';
 import { useAuth } from '../contexts/AuthContext';
 import type { User } from '../types';
 
@@ -15,6 +15,7 @@ const Admin: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [dropboxConnected, setDropboxConnected] = useState(false);
+    const [dropboxInfo, setDropboxInfo] = useState<any>(null);
     const [form] = Form.useForm();
 
     useEffect(() => {
@@ -40,6 +41,12 @@ const Admin: React.FC = () => {
     const checkDropbox = async () => {
         const isConnected = await checkDropboxConnection();
         setDropboxConnected(isConnected);
+        if (isConnected) {
+            const info = await getDropboxAccountInfo();
+            setDropboxInfo(info);
+        } else {
+            setDropboxInfo(null);
+        }
     };
 
     const handleCreateUser = async (values: any) => {
@@ -134,18 +141,35 @@ const Admin: React.FC = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, padding: '32px 0' }}>
                     <div style={{ textAlign: 'center' }}>
                         {dropboxConnected ? (
-                            <CheckCircleFilled style={{ fontSize: 64, color: '#52c41a' }} />
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                                <CheckCircleFilled style={{ fontSize: 64, color: '#52c41a' }} />
+                                {dropboxInfo ? (
+                                    <div style={{ background: '#f6ffed', padding: '16px 32px', borderRadius: 8, border: '1px solid #b7eb8f' }}>
+                                        <div style={{ fontSize: 18, fontWeight: 600, color: '#389e0d' }}>Đã kết nối thành công</div>
+                                        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+                                            <Avatar size={48} src={dropboxInfo.profile_photo_url} icon={<UserOutlined />} />
+                                            <div style={{ textAlign: 'left' }}>
+                                                <div style={{ fontWeight: 'bold' }}>{dropboxInfo.name.display_name}</div>
+                                                <div style={{ color: '#8c8c8c' }}>{dropboxInfo.email}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <Spin />
+                                )}
+                            </div>
                         ) : (
                             <DropboxOutlined style={{ fontSize: 64, color: '#0061FE' }} />
                         )}
-                        <h3 style={{ marginTop: 16, fontSize: 20, fontWeight: 600 }}>
-                            {dropboxConnected ? 'Đã kết nối Dropbox' : 'Chưa kết nối Dropbox'}
-                        </h3>
-                        <p style={{ color: '#8c8c8c', marginTop: 8 }}>
-                            {dropboxConnected
-                                ? 'Hệ thống đã sẵn sàng upload file.'
-                                : 'Cần kết nối để tính năng upload file hoạt động.'}
-                        </p>
+
+                        {!dropboxConnected && (
+                            <>
+                                <h3 style={{ marginTop: 16, fontSize: 20, fontWeight: 600 }}>Chưa kết nối Dropbox</h3>
+                                <p style={{ color: '#8c8c8c', marginTop: 8 }}>
+                                    Cần kết nối để tính năng upload file hoạt động.
+                                </p>
+                            </>
+                        )}
                     </div>
 
                     {!dropboxConnected ? (
@@ -159,14 +183,24 @@ const Admin: React.FC = () => {
                             Kết nối ngay
                         </Button>
                     ) : (
-                        <Button danger onClick={() => {
-                            localStorage.removeItem('dropbox_access_token');
-                            localStorage.removeItem('dropbox_refresh_token');
-                            setDropboxConnected(false);
-                            message.success("Đã ngắt kết nối");
-                        }}>
-                            Ngắt kết nối
-                        </Button>
+                        <Popconfirm
+                            title="Ngắt kết nối Dropbox"
+                            description="Bạn có chắc chắn muốn ngắt kết nối? Các tính năng upload sẽ ngừng hoạt động."
+                            onConfirm={() => {
+                                localStorage.removeItem('dropbox_access_token');
+                                localStorage.removeItem('dropbox_refresh_token');
+                                localStorage.removeItem('minph_dropbox_verifier');
+                                setDropboxConnected(false);
+                                setDropboxInfo(null);
+                                message.success("Đã ngắt kết nối");
+                            }}
+                            okText="Đồng ý"
+                            cancelText="Hủy"
+                        >
+                            <Button danger size="large">
+                                Ngắt kết nối
+                            </Button>
+                        </Popconfirm>
                     )}
                 </div>
             </Card>
