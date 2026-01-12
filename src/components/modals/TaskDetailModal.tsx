@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import dayjs from 'dayjs';
-import { Modal, Form, Input, Button, Upload, message, Tag, Row, Col, Image, Divider, Tooltip, Spin, Tabs, Timeline } from 'antd';
+import { Modal, Form, Input, Button, Upload, message, Tag, Row, Col, Image, Divider, Spin, Tabs, Timeline } from 'antd';
 import { InboxOutlined, CloudUploadOutlined, FileOutlined, FileImageOutlined, DeleteOutlined, UserOutlined, ClockCircleOutlined, SendOutlined, PaperClipOutlined } from '@ant-design/icons';
 import type { Order, FileAttachment, User } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -482,7 +482,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                         );
                                                     })
                                                 ) : (
-                                                    !canDSWork && <div style={{ color: '#ccc', textAlign: 'center', fontSize: 12 }}>Chưa có bài nộp</div>
+                                                    !canDSWork && <div style={{ color: '#ccc', textAlign: 'center', fontSize: 12 }}>Chưa có file. </div>  
                                                 )}
                                             </div>
                                             {uploading && <div style={{ color: colors.primaryPink, fontSize: 12, marginTop: 8, textAlign: 'center' }}><Spin size="small" /> Đang upload...</div>}

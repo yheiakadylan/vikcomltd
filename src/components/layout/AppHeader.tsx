@@ -1,20 +1,18 @@
 import React, { useState } from 'react';
-import { Layout, Input, Button, Avatar, Dropdown } from 'antd';
+import { Layout, Button, Avatar, Dropdown } from 'antd';
 import { PlusOutlined, UserOutlined, SettingOutlined, LogoutOutlined, SafetyCertificateOutlined, HomeOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import UserProfileModal from '../modals/UserProfileModal';
 
 const { Header } = Layout;
-const { Search } = Input;
+
 
 interface AppHeaderProps {
     onNewTask?: () => void;
-    searchText?: string;
-    onSearchChange?: (value: string) => void;
 }
 
-const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask, searchText = '', onSearchChange }) => {
+const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const { appUser: user, logout } = useAuth();
@@ -83,16 +81,6 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask, searchText = '', onSea
             >
                 {/* Left Side: Logo + Search */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 0 }}>
-                {/* <div style={{ fontSize: 24, fontWeight: 'bold', color: '#c41d7f', whiteSpace: 'nowrap' }}>
-                        PINK<span style={{ color: '#262626' }}>Y</span>
-                    </div>*/}
-                    <Search
-                        placeholder="Tìm kiếm..."
-                        allowClear
-                        value={searchText}
-                        onChange={(e) => onSearchChange?.(e.target.value)}
-                        style={{ width: 300, maxWidth: '100%' }}
-                    />
                 </div>
 
                 {/* Right Side: Action Buttons + User Menu */}

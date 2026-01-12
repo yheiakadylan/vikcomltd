@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Tabs, Button, Badge, Card, Tag, Empty, Spin, App, Popconfirm, Image } from 'antd';
 import { FireFilled, ClockCircleOutlined, CloudUploadOutlined, RollbackOutlined, DeleteOutlined } from '@ant-design/icons';
+
 import { useParams, useNavigate } from 'react-router-dom'; // Added imports
 import { useAuth } from '../contexts/AuthContext';
 import type { Order, OrderStatus } from '../types';
@@ -11,6 +12,7 @@ import TaskDetailModal from '../components/modals/TaskDetailModal';
 import RejectModal from '../components/modals/RejectModal';
 import GiveBackModal from '../components/modals/GiveBackModal';
 import AppHeader from '../components/layout/AppHeader';
+import SearchInput from '../components/common/SearchInput';
 import dayjs from 'dayjs';
 
 const { Content } = Layout;
@@ -181,7 +183,7 @@ const Dashboard: React.FC = () => {
                         ) : (
                             <div className="text-gray-300"><CloudUploadOutlined style={{ fontSize: 32, color: '#ccc' }} /></div>
                         )}
-                        {isUrgent && <div style={{ position: 'absolute', top: 0, right: 0, background: '#f5222d', color: '#fff', fontSize: 12, fontWeight: 'bold', padding: '4px 8px', borderRadius: '0 0 0 8px' }}>URGENT 🔥</div>}
+                        {isUrgent && <div style={{ position: 'absolute', top: 0, right: 0, background: '#f5222d', color: '#fff', fontSize: 12, fontWeight: 'bold', padding: '4px 8px', borderRadius: '0 0 0 8px' }}> 🔥</div>}
                         {isCS && (
                             <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }} onClick={e => e.stopPropagation()}>
                                 <Popconfirm title="Xóa task?" onConfirm={() => handleDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText="Xóa" cancelText="Hủy">
@@ -244,8 +246,6 @@ const Dashboard: React.FC = () => {
         <Layout style={{ minHeight: '100vh', background: '#fff0f6' }}>
             <AppHeader
                 onNewTask={isCS ? () => setIsNewTaskModalOpen(true) : undefined}
-                searchText={searchText}
-                onSearchChange={setSearchText}
             />
             <Content style={{ padding: 24 }}>
                 <div style={{ background: '#fff', borderRadius: 12, minHeight: 'calc(100vh - 140px)' }}>
@@ -255,6 +255,13 @@ const Dashboard: React.FC = () => {
                         items={tabItems}
                         tabBarStyle={{ padding: '0 24px' }}
                         style={{ marginTop: 12 }}
+                        tabBarExtraContent={
+                            <SearchInput
+                                value={searchText}
+                                onChange={setSearchText}
+                                style={{ width: 300, marginRight: 16 }}
+                            />
+                        }
                     />
                 </div>
             </Content>
