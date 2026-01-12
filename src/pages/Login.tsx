@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Form, Input, Button, Typography, Layout, message } from 'antd';
+import { Card, Form, Input, Button, Typography, Layout, App } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '../theme/themeConfig';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,6 +8,7 @@ const { Title } = Typography;
 const { Content } = Layout;
 
 const Login: React.FC = () => {
+    const { message } = App.useApp();
     const { signIn, user } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);

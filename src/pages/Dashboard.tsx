@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Tabs, Input, Button, Badge, Card, Tag, Empty, Spin, Avatar, App } from 'antd';
-import { PlusOutlined, FireFilled, UserOutlined, ClockCircleOutlined, CloudUploadOutlined, RollbackOutlined } from '@ant-design/icons';
+import { Layout, Tabs, Button, Badge, Card, Tag, Empty, Spin, App } from 'antd';
+import { FireFilled, ClockCircleOutlined, CloudUploadOutlined, RollbackOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom'; // Added imports
 import { useAuth } from '../contexts/AuthContext';
 import type { Order, OrderStatus } from '../types';
@@ -10,14 +10,14 @@ import NewTaskModal from '../components/modals/NewTaskModal';
 import TaskDetailModal from '../components/modals/TaskDetailModal';
 import RejectModal from '../components/modals/RejectModal';
 import GiveBackModal from '../components/modals/GiveBackModal';
+import AppHeader from '../components/layout/AppHeader';
 import dayjs from 'dayjs';
 
-const { Header, Content } = Layout;
-const { Search } = Input;
+const { Content } = Layout;
 
 const Dashboard: React.FC = () => {
     const { message } = App.useApp();
-    const { appUser: user, logout } = useAuth();
+    const { appUser: user } = useAuth();
     const { status } = useParams<{ status: string }>();
     const navigate = useNavigate();
 
@@ -213,19 +213,11 @@ const Dashboard: React.FC = () => {
 
     return (
         <Layout style={{ minHeight: '100vh', background: '#fff0f6' }}>
-            <Header style={{ background: '#fff', borderBottom: '1px solid #ffadd2', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10, height: 64 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <div style={{ fontSize: 24, fontWeight: 'bold', color: '#c41d7f' }}>PINK<span style={{ color: '#262626' }}>POD</span></div>
-                    <Search placeholder="Tìm kiếm..." allowClear onChange={e => setSearchText(e.target.value)} style={{ width: 300 }} />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    {isCS && <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsNewTaskModalOpen(true)} style={{ background: '#eb2f96', borderColor: '#eb2f96' }}>Tạo Task</Button>}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => { logout(); window.location.href = '/login'; }}>
-                        <Avatar src={user?.avatar} icon={<UserOutlined />} style={{ background: '#ffd6e7', color: '#c41d7f' }} />
-                        <div><div style={{ fontWeight: 600 }}>{user?.displayName}</div><div style={{ fontSize: 10, color: '#8c8c8c' }}>{user?.role}</div></div>
-                    </div>
-                </div>
-            </Header>
+            <AppHeader
+                onNewTask={isCS ? () => setIsNewTaskModalOpen(true) : undefined}
+                searchText={searchText}
+                onSearchChange={setSearchText}
+            />
             <Content style={{ padding: 24 }}>
                 <div style={{ background: '#fff', borderRadius: 12, minHeight: 'calc(100vh - 140px)' }}>
                     <Tabs

@@ -78,9 +78,13 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
         try {
             if (!order) throw new Error("No order");
 
-            const dropboxLink = await uploadFileToDropbox(file, `${order.dropboxPath}/designs/${file.name}`);
-            const linkStr = (dropboxLink as any).path_display || '#';
-            const newFile: FileAttachment = { name: file.name, link: linkStr };
+            // Upload to /Final subfolder per specification
+            const uploadPath = `${order.dropboxPath}/Final/${file.name}`;
+            const dropboxLink = await uploadFileToDropbox(file, uploadPath);
+
+            // Extract URL from shared link result
+            const linkUrl = (dropboxLink as any).url || (dropboxLink as any).path_display || '#';
+            const newFile: FileAttachment = { name: file.name, link: linkUrl };
 
             setDesignFiles(prev => [...prev, newFile]);
             setUploading(false);
@@ -89,7 +93,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
         } catch (err) {
             setUploading(false);
             onError(err);
-            message.error('Upload thất bại');
+            message.error('Upload thất bại. Kiểm tra kết nối Dropbox.');
             console.error(err);
         }
     };

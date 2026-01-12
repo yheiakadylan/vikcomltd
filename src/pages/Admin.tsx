@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Tabs, Table, Button, Modal, Form, Input, Select, Tag, Card, App, Popconfirm, Avatar, Spin } from 'antd';
 import { PlusOutlined, DropboxOutlined, CheckCircleFilled, UserOutlined } from '@ant-design/icons';
-import { getUsers, createUserProfile } from '../services/firebase';
+import { getUsers, auth } from '../services/firebase';
 import { getDropboxAuthUrl, checkDropboxConnection, getDropboxAccountInfo } from '../services/dropbox';
 import { useAuth } from '../contexts/AuthContext';
 import type { User } from '../types';
@@ -51,24 +51,47 @@ const Admin: React.FC = () => {
 
     const handleCreateUser = async (values: any) => {
         try {
-            const newUser: User = {
-                uid: values.email,
-                email: values.email,
-                displayName: values.displayName,
-                role: values.role,
-                isActive: true,
-                avatar: `https://ui-avatars.com/api/?name=${values.displayName}&background=random`,
-                avatarUrl: `https://ui-avatars.com/api/?name=${values.displayName}&background=random`
-            };
+            setLoading(true);
 
-            await createUserProfile(newUser);
-            message.success('Tạo nhân viên thành công!');
+            // Get current user's Firebase Auth token
+            const token = await auth.currentUser?.getIdToken();
+
+            if (!token) {
+                throw new Error('Không thể xác thực. Vui lòng đăng nhập lại.');
+            }
+
+            // Call Vercel API
+            const response = await fetch('/api/users', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: values.email,
+                    password: values.password,
+                    displayName: values.displayName,
+                    role: values.role,
+                    adminToken: token,
+                }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Có lỗi xảy ra');
+            }
+
+            console.log('User created:', result);
+            message.success('Tạo nhân viên thành công! Nhân viên có thể đăng nhập ngay.');
             setIsModalOpen(false);
             form.resetFields();
             fetchUsers();
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            message.error('Lỗi khi tạo nhân viên');
+            const errorMessage = error.message || 'Lỗi khi tạo nhân viên';
+            message.error(errorMessage);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -89,7 +112,7 @@ const Admin: React.FC = () => {
             key: 'displayName',
             render: (text: string, record: User) => (
                 <div className="flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <img src={record.avatar || record.avatarUrl} alt="avatar" style={{ width: 32, height: 32, borderRadius: '50%' }} />
+                    <Avatar src={record.avatar || record.avatarUrl || undefined} icon={<UserOutlined />} />
                     <span style={{ fontWeight: 500 }}>{text}</span>
                 </div>
             )
@@ -233,6 +256,34 @@ const Admin: React.FC = () => {
                     </Form.Item>
                     <Form.Item name="displayName" label="Tên hiển thị" rules={[{ required: true }]}>
                         <Input placeholder="Nguyễn Văn A" />
+                    </Form.Item>
+                    <Form.Item
+                        name="password"
+                        label="Mật khẩu"
+                        rules={[
+                            { required: true, message: 'Vui lòng nhập mật khẩu' },
+                            { min: 6, message: 'Mật khẩu ít nhất 6 ký tự' }
+                        ]}
+                    >
+                        <Input.Password placeholder="Nhập mật khẩu cho nhân viên" />
+                    </Form.Item>
+                    <Form.Item
+                        name="confirmPassword"
+                        label="Xác nhận mật khẩu"
+                        dependencies={['password']}
+                        rules={[
+                            { required: true, message: 'Vui lòng xác nhận mật khẩu' },
+                            ({ getFieldValue }) => ({
+                                validator(_, value) {
+                                    if (!value || getFieldValue('password') === value) {
+                                        return Promise.resolve();
+                                    }
+                                    return Promise.reject(new Error('Mật khẩu không khớp!'));
+                                },
+                            }),
+                        ]}
+                    >
+                        <Input.Password placeholder="Nhập lại mật khẩu" />
                     </Form.Item>
                     <Form.Item name="role" label="Vai trò" rules={[{ required: true }]}>
                         <Select>

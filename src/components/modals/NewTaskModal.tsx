@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { doc, setDoc, collection } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { uploadFileToDropbox } from '../../services/dropbox';
+import dayjs from 'dayjs';
 
 const { TextArea } = Input;
 const { Dragger } = Upload;
@@ -20,7 +21,7 @@ interface NewTaskModalProps {
 
 const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }) => {
     const [form] = Form.useForm();
-    const { user } = useAuth();
+    const { appUser: user } = useAuth();
     const [loading, setLoading] = useState(false);
     const [isUrgent, setIsUrgent] = useState(false);
     const [fileList, setFileList] = useState<any[]>([]);
@@ -29,43 +30,64 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
         if (!user) return;
         setLoading(true);
         try {
+            // Generate readable ID (6-digit timestamp-based for uniqueness)
+            const readableId = Math.floor(100000 + Math.random() * 900000);
+
+            // Format year and month
+            const year = dayjs().format('YYYY');
+            const month = dayjs().format('MM');
+
+            // Normalize Title for safe folder name (remove Vietnamese accents & special chars)
+            const safeTitle = values.title
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "") // Remove diacritics
+                .replace(/đ/g, "d").replace(/Đ/g, "D") // Handle đ/Đ
+                .replace(/[^a-zA-Z0-9]/g, "_") // Replace special chars with underscore
+                .substring(0, 50); // Limit length
+
+            const skuPart = values.sku ? `${values.sku}_` : '';
+
+            // STANDARDIZED PATH per specification: /PINK_POD_SYSTEM/YYYY/MM/ID_SKU_Title
+            const dropboxPath = `/PINK_POD_SYSTEM/${year}/${month}/${readableId}_${skuPart}${safeTitle}`;
+
             const newOrderRef = doc(collection(db, "orders"));
             const orderData: Partial<Order> = {
                 id: newOrderRef.id,
-                readableId: Date.now(), // Temporary: Needs better auto-inc strategy
+                readableId: readableId,
                 title: values.title,
                 sku: values.sku,
                 category: values.category || 'T-shirt',
                 quantity: values.quantity || 1,
                 deadline: values.deadline ? values.deadline.toDate() : new Date(),
                 description: values.description,
-                status: 'new', // Directly to New for now, or 'draft'
+                status: 'new',
                 isUrgent: isUrgent,
                 createdBy: user.uid,
-                dropboxPath: `/PINK/${new Date().getFullYear()}/${newOrderRef.id}`, // Placeholder
-                sampleFiles: [], // Logic to handle file upload needed
+                dropboxPath: dropboxPath, // Standardized path saved to DB
+                sampleFiles: [],
                 created_at: new Date(),
+                updatedAt: new Date(),
             };
 
-            // Upload files to Dropbox
+            // Upload sample files to Dropbox
             if (fileList.length > 0) {
                 try {
                     const uploadPromises = fileList.map(async (file) => {
-                        // We need read file content to upload. Antd Upload file originFileObj is the File object
                         if (file.originFileObj) {
-                            return uploadFileToDropbox(file.originFileObj, orderData.dropboxPath!);
+                            const result = await uploadFileToDropbox(
+                                file.originFileObj,
+                                `${dropboxPath}/Samples/${file.name}`
+                            );
+                            return { name: file.name, link: (result as any).url || '#' };
                         }
                         return null;
                     });
 
-                    await Promise.all(uploadPromises);
-
-                    // Update sampleFiles metadata with simple names for now, 
-                    // or we could store shared links if we fetched them.
-                    orderData.sampleFiles = fileList.map(f => f.name);
+                    const uploadedFiles = await Promise.all(uploadPromises);
+                    orderData.sampleFiles = uploadedFiles.filter(f => f !== null) as any[];
                 } catch (e) {
                     console.error("Upload error", e);
-                    message.warning("Task created but some files failed to upload to Dropbox. Check console.");
+                    message.warning("Task created but some files failed to upload to Dropbox.");
                 }
             }
 
