@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import dayjs from 'dayjs';
 import { Modal, Form, Input, Button, Upload, message, Tag, Row, Col, Image, Divider, Spin, Tabs, Timeline } from 'antd';
-import { InboxOutlined, CloudUploadOutlined, FileOutlined, FileImageOutlined, DeleteOutlined, UserOutlined, ClockCircleOutlined, SendOutlined, PaperClipOutlined } from '@ant-design/icons';
+import { InboxOutlined, CloudUploadOutlined, FileOutlined, FileImageOutlined, DeleteOutlined, UserOutlined, ClockCircleOutlined, SendOutlined, PaperClipOutlined, SaveOutlined } from '@ant-design/icons';
 import type { Order, FileAttachment, User } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateOrder, getUsers, subscribeToLogs, addOrderLog } from '../../services/firebase';
@@ -145,6 +145,21 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
         }
     };
 
+    const handleUpdateInfo = async () => {
+        if (!order) return;
+        try {
+            const values = await form.validateFields();
+            await updateOrder(order.id, {
+                ...values,
+                updatedAt: new Date(),
+            });
+            message.success('Cập nhật thông tin thành công!');
+            onUpdate();
+        } catch (error) {
+            message.error('Lỗi cập nhật thông tin');
+        }
+    };
+
     const customUploadRequest = async (options: any) => {
         const { file, onSuccess, onError } = options;
         setUploading(true);
@@ -237,8 +252,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
             width={1000}
             title={
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <span style={{ color: '#8c8c8c', fontWeight: 400 }}>#{order?.readableId}</span>
-                    <span style={{ fontWeight: 800, fontSize: 18, color: colors.primaryPink }}>{order?.title}</span>
+                    <span style={{ fontWeight: 800, fontSize: 18, color: colors.primaryPink }}>#{order?.readableId}</span>
                     {(isCS || isAdmin) ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', marginRight: 32 }}>
                             <span style={{ fontSize: 14, color: isUrgent ? colors.urgentRed : '#bfbfbf', fontWeight: isUrgent ? 'bold' : 'normal' }}>
@@ -290,7 +304,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                     <div style={{ background: '#fafafa', padding: 16, borderRadius: 12 }}>
                         <div style={{ fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                             <CloudUploadOutlined style={{ color: colors.primaryPink }} />
-                            File khách gửi ({order?.customerFiles?.length || 0})
+                            File đính kèm({order?.customerFiles?.length || 0})
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto' }}>
                             {order?.customerFiles && order.customerFiles.length > 0 ? (
@@ -361,6 +375,24 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                             )}
                                         </div>
                                         <Form form={form} layout="vertical" disabled={!isCS}>
+                                            {(isCS && order?.status === 'new') && (
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                                                    <Button
+                                                        type="primary"
+                                                        onClick={handleUpdateInfo}
+                                                        icon={<SaveOutlined />}
+                                                        style={{
+                                                            background: colors.primaryPink,
+                                                            borderColor: colors.primaryPink,
+                                                            borderRadius: 20,
+                                                            fontWeight: 600,
+                                                            boxShadow: '0 2px 8px rgba(235, 47, 150, 0.3)'
+                                                        }}
+                                                    >
+                                                        Cập nhật Task
+                                                    </Button>
+                                                </div>
+                                            )}
                                             <Row gutter={16}>
                                                 <Col span={24}>
                                                     <Form.Item name="title" label="Title">
@@ -482,7 +514,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                         );
                                                     })
                                                 ) : (
-                                                    !canDSWork && <div style={{ color: '#ccc', textAlign: 'center', fontSize: 12 }}>Chưa có file. </div>  
+                                                    !canDSWork && <div style={{ color: '#ccc', textAlign: 'center', fontSize: 12 }}>Chưa có file. </div>
                                                 )}
                                             </div>
                                             {uploading && <div style={{ color: colors.primaryPink, fontSize: 12, marginTop: 8, textAlign: 'center' }}><Spin size="small" /> Đang upload...</div>}

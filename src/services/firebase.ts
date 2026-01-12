@@ -1,6 +1,6 @@
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc, deleteDoc, addDoc } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc, deleteDoc, addDoc, getCountFromServer, limit, startAfter, QueryDocumentSnapshot } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging, isSupported } from "firebase/messaging";
 import type { Order, User } from '../types';
@@ -78,11 +78,36 @@ export const createUserProfile = async (user: User) => {
     await setDoc(doc(db, 'users', user.uid), user);
 };
 
-export const subscribeToOrders = (onData: (orders: Order[]) => void, onError?: (error: any) => void, constraints: any[] = []) => {
-    const q = query(
-        collection(db, 'tasks'),
+export const getOrdersCount = async (constraints: any[] = []): Promise<number> => {
+    const coll = collection(db, 'tasks');
+    const q = query(coll, ...constraints);
+    const snapshot = await getCountFromServer(q);
+    return snapshot.data().count;
+};
+
+export const subscribeToOrders = (
+    onData: (orders: Order[], lastDoc: QueryDocumentSnapshot | null) => void,
+    onError?: (error: any) => void,
+    constraints: any[] = [],
+    limitVal: number = 25,
+    startAfterDoc: QueryDocumentSnapshot | null = null
+) => {
+    // Construct Query constraints
+    const computedConstraints = [
         orderBy('created_at', 'desc'),
         ...constraints
+    ];
+
+    if (startAfterDoc) {
+        computedConstraints.push(startAfter(startAfterDoc));
+    }
+
+    // Always apply limit
+    computedConstraints.push(limit(limitVal));
+
+    const q = query(
+        collection(db, 'tasks'),
+        ...computedConstraints
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -90,7 +115,11 @@ export const subscribeToOrders = (onData: (orders: Order[]) => void, onError?: (
             id: doc.id,
             ...doc.data()
         })) as Order[];
-        onData(orders);
+
+        // Return the last document for pagination cursor
+        const lastDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
+
+        onData(orders, lastDoc);
     }, (error) => {
         console.error("Error fetching realtime orders:", error);
         if (onError) onError(error);
@@ -152,7 +181,7 @@ export const updateOrder = async (orderId: string, data: any) => {
     if (currentUser && data.status) {
         await addOrderLog(orderId, {
             actorId: currentUser.uid,
-            actorName: currentUser.displayName || 'Unknown',
+            actorName: currentUser.displayName || 'System',
             action: 'status_change',
             content: `Changed status to "${data.status}"`
         });

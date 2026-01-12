@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Tabs, Button, Badge, Card, Tag, Empty, Spin, App, Popconfirm, Image } from 'antd';
-import { FireFilled, ClockCircleOutlined, CloudUploadOutlined, RollbackOutlined, DeleteOutlined } from '@ant-design/icons';
-
-import { useParams, useNavigate } from 'react-router-dom'; // Added imports
+import { Layout, Tabs, Button, Card, Tag, Empty, Spin, App, Popconfirm, Image, Pagination } from 'antd';
+import { FireFilled, ClockCircleOutlined, CloudUploadOutlined, RollbackOutlined, DeleteOutlined, AppstoreOutlined, BarsOutlined } from '@ant-design/icons';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import type { Order, OrderStatus } from '../types';
-import { subscribeToOrders, where, deleteOrder } from '../services/firebase';
+import { deleteOrder } from '../services/firebase';
 import { sortOrders } from '../utils/sortOrders';
 import NewTaskModal from '../components/modals/NewTaskModal';
 import TaskDetailModal from '../components/modals/TaskDetailModal';
@@ -27,9 +26,18 @@ const Dashboard: React.FC = () => {
     const validStatuses: OrderStatus[] = ['new', 'doing', 'in_review', 'need_fix', 'done'];
     const activeTab: OrderStatus = (status && validStatuses.includes(status as OrderStatus)) ? (status as OrderStatus) : 'new';
 
+    // Pagination State
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(25);
+    const [total, setTotal] = useState(0);
+    const pageCursors = React.useRef<Map<number, any>>(new Map());
+
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchText, setSearchText] = useState('');
+
+    // View Mode State
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
     // Modal States
     const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
@@ -41,96 +49,92 @@ const Dashboard: React.FC = () => {
     const isCS = user?.role === 'CS' || user?.role === 'ADMIN';
     const isDS = user?.role === 'DS';
 
-    // 1. Realtime Subscription
+    // Reset Page on Tab change
     useEffect(() => {
-        if (!user) return; // Wait for auth
+        setPage(1);
+        pageCursors.current.clear();
+    }, [activeTab]);
+
+    // 1. Data Loading (Paginated)
+    useEffect(() => {
+        if (!user) return;
 
         setLoading(true);
+        let unsubscribe: (() => void) | undefined;
         let constraints: any[] = [];
 
-        // CS/Admin: Load ALL orders (Rules allow)
-        // DS: Must restrict query to match Rules to avoid "Permission Denied"
-        if (isDS) {
-            // DS Rules:
-            // - Can read 'new'
-            // - Can read assigned to self
-
-            // To make badges work ideally we need all allowed docs.
-            // But we can't OR query 'status==new' OR 'designerId==me' easily in one go.
-            // Strategy: Load based on Active Tab to ensure speed and permission success.
-            if (activeTab === 'new') {
-                constraints.push(where('status', '==', 'new'));
-            } else {
-                // For 'doing', 'in_review', 'need_fix', 'done' -> Only show assigned
-                // Also filter by status to optimize? Yes.
-                constraints.push(where('designerId', '==', user.uid));
-                constraints.push(where('status', '==', activeTab));
-            }
-        }
-
-        // If CS, constraints is empty -> fetches all.
-
-        const unsubscribe = subscribeToOrders(
-            (fetchedOrders) => {
-                setOrders(fetchedOrders);
-                setLoading(false);
-            },
-            (error) => {
-                console.error("Subscription error:", error);
-                setLoading(false);
-                // Only show error if it persists or user needs to know
-                if (error?.code === 'permission-denied') {
-                    message.error("Không có quyền truy cập dữ liệu tab này.");
+        // Build Constraints based on Role & Tab
+        import('../services/firebase').then(({ where }) => {
+            if (isDS) {
+                if (activeTab === 'new') {
+                    constraints.push(where('status', '==', 'new'));
+                } else {
+                    constraints.push(where('designerId', '==', user.uid));
+                    constraints.push(where('status', '==', activeTab));
                 }
-            },
-            constraints
-        );
-
-        return () => unsubscribe();
-    }, [user, activeTab, isDS]); // Re-run when Tab changes (crucial for DS queries)
-
-    // 2. Filter & Sort Logic
-    const getFilteredOrders = (filterStatus: OrderStatus) => {
-        // If CS, 'orders' has EVERYTHING. We filter locally.
-        // If DS, 'orders' has ONLY CURRENT TAB data (due to query constraints above).
-
-        let filtered = orders;
-
-        if (isCS) {
-            filtered = orders.filter(o => o.status === filterStatus);
-        } else {
-            // DS: 'orders' is already filtered by query for the *activeTab*.
-            // If this function is called for a *different* tab (e.g. Badge count),
-            // 'orders' won't contain those items.
-            // So Badges will be 0 for non-active tabs. This is expected behavior with this fix.
-            // We just ensure we don't show "Active Tab" items in "Other Tab" slots if something overlaps.
-            // Actually, the query logic guarantees checking `activeTab` vs `filterStatus`.
-            if (filterStatus !== activeTab) {
-                return []; // DS Badge 0 for other tabs
+            } else {
+                if (activeTab !== 'new' && activeTab !== 'doing' && activeTab !== 'in_review' && activeTab !== 'need_fix' && activeTab !== 'done') {
+                    // If unexpected tab, maybe fetch all? Or stick to known statuses.
+                    // The View 'all' is not in tabs.
+                    constraints.push(where('status', '==', activeTab));
+                } else {
+                    constraints.push(where('status', '==', activeTab));
+                }
             }
-            // For the active tab, 'orders' is already correct.
-        }
 
-        // Search
-        if (searchText) {
-            const lowerSearch = searchText.toLowerCase();
-            filtered = filtered.filter(o =>
-                o.title.toLowerCase().includes(lowerSearch) ||
-                o.readableId.toString().includes(lowerSearch) ||
-                (o.sku && o.sku.toLowerCase().includes(lowerSearch))
-            );
-        }
+            // 1. Get Total Count (Only on first page or tab change)
+            if (page === 1) {
+                import('../services/firebase').then(({ getOrdersCount }) => {
+                    getOrdersCount(constraints).then(count => setTotal(count));
+                });
+            }
 
-        return sortOrders(filtered);
+            // 2. Determine Cursor
+            const startAfterDoc = page > 1 ? pageCursors.current.get(page - 1) : null;
+
+            // 3. Subscribe
+            import('../services/firebase').then(({ subscribeToOrders }) => {
+                unsubscribe = subscribeToOrders((newOrders, lastDoc) => {
+                    setOrders(newOrders);
+                    if (lastDoc) {
+                        pageCursors.current.set(page, lastDoc);
+                    }
+                    setLoading(false);
+                }, (error) => {
+                    console.error("Error:", error);
+                    setLoading(false);
+                    if (error?.code === 'permission-denied') message.error('Không có quyền truy cập.');
+                }, constraints, pageSize, startAfterDoc);
+            });
+        });
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, [user, activeTab, isDS, page, pageSize]); // Dependencies
+
+    const handlePageChange = (p: number, ps: number) => {
+        setPage(p);
+        setPageSize(ps);
     };
 
-    // Actions ... (rest remains similar)
+    // Client-side Search (on current page data)
+    const filteredOrders = React.useMemo(() => {
+        let res = orders;
+        if (searchText) {
+            const lower = searchText.toLowerCase();
+            res = res.filter(o =>
+                o.title.toLowerCase().includes(lower) ||
+                o.readableId.toString().includes(lower) ||
+                (o.sku && o.sku.toLowerCase().includes(lower))
+            );
+        }
+        return sortOrders(res);
+    }, [orders, searchText]);
 
-
-    // ... Copy modal handlers ...
+    // Actions
     const handleOpenDetail = (order: Order) => { setSelectedOrder(order); setIsDetailModalOpen(true); };
     const handleOpenGiveBack = (e: React.MouseEvent, order: Order) => { e.stopPropagation(); setSelectedOrder(order); setIsGiveBackModalOpen(true); };
-
     const handleDelete = async (orderId: string) => {
         try {
             await deleteOrder(orderId);
@@ -140,7 +144,6 @@ const Dashboard: React.FC = () => {
         }
     };
 
-    // Render Card ... (No change)
     const renderOrderCard = (order: Order) => {
         const isUrgent = order.isUrgent;
         const deadlineDisplay = order.deadline
@@ -149,10 +152,7 @@ const Dashboard: React.FC = () => {
 
         const formatDropboxUrl = (url?: string) => {
             if (!url) return '';
-            // Fix double question marks if present (repair existing bad data)
-            if (url.includes('?') && url.lastIndexOf('?') > url.indexOf('?')) {
-                return url.replace(/\?raw=1$/, '&raw=1');
-            }
+            if (url.includes('?') && url.lastIndexOf('?') > url.indexOf('?')) return url.replace(/\?raw=1$/, '&raw=1');
             if (url.includes('raw=1')) return url;
             if (url.includes('dropbox.com')) {
                 const clean = url.replace('?dl=0', '').replace('&dl=0', '');
@@ -199,26 +199,45 @@ const Dashboard: React.FC = () => {
             >
                 <Card.Meta
                     title={
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: 16, fontWeight: 700, color: isUrgent ? '#cf1322' : '#262626', maxWidth: '75%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={order.title}>
-                                {isUrgent && <FireFilled style={{ marginRight: 4 }} />} {order.title}
-                            </span>
-                            <span style={{ fontSize: 12, color: '#8c8c8c' }}>#{order.readableId}</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {/* Header: ID + Date */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: 18, fontWeight: 800, color: isUrgent ? '#ff4d4f' : '#eb2f96', lineHeight: 1 }}>
+                                    {isUrgent && <FireFilled style={{ marginRight: 4 }} />} #{order.readableId}
+                                </span>
+                                {order.created_at && (
+                                    <span style={{ fontSize: 12, color: '#999', background: '#fafafa', padding: '2px 8px', borderRadius: 12, border: '1px solid #f0f0f0' }}>
+                                        {dayjs((order.created_at as any).toDate ? (order.created_at as any).toDate() : order.created_at).format('DD/MM')}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Title Box */}
+                            <div style={{
+                                fontSize: 13,
+                                background: '#f9f9f9',
+                                color: '#595959',
+                                padding: '6px 10px',
+                                borderRadius: 8,
+                                width: '100%',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                border: '1px solid #f0f0f0'
+                            }} title={order.title}>
+                                {order.title}
+                            </div>
                         </div>
                     }
                     description={
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                {deadlineDisplay ? (
-                                    <Tag icon={<ClockCircleOutlined />} color={isUrgent ? 'red' : 'default'} style={{ margin: 0, fontSize: 12 }}>
-                                        {deadlineDisplay}
-                                    </Tag>
-                                ) : <span />}
-                                {order.sku && <Tag color="blue" style={{ margin: 0 }}>{order.sku}</Tag>}
-                            </div>
-                            <div style={{ fontSize: 13, color: '#595959', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {order.description || <span style={{ color: '#ccc', fontStyle: 'italic' }}>No desc</span>}
-                            </div>
+                        /* Footer: Tags */
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                            {deadlineDisplay ? (
+                                <Tag icon={<ClockCircleOutlined />} color={isUrgent ? 'red' : 'default'} style={{ margin: 0, fontSize: 12, border: 'none', background: isUrgent ? '#fff1f0' : '#f5f5f5' }}>
+                                    {deadlineDisplay}
+                                </Tag>
+                            ) : <span />}
+                            {order.sku && <Tag color="blue" style={{ margin: 0, border: 'none', background: '#e6f7ff', color: '#1890ff' }}>{order.sku}</Tag>}
                         </div>
                     }
                 />
@@ -226,43 +245,159 @@ const Dashboard: React.FC = () => {
         );
     };
 
+    const renderOrderRow = (order: Order) => {
+        const isUrgent = order.isUrgent;
+        const deadlineDisplay = order.deadline
+            ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline).format('DD/MM')
+            : null;
 
-    const renderTabContent = (status: OrderStatus) => {
-        const filteredOrders = getFilteredOrders(status);
+        return (
+            <div
+                key={order.id}
+                className={`cinematic-row-card ${isUrgent ? 'border-red-500 bg-red-50' : ''}`}
+                style={{ borderColor: isUrgent ? '#f5222d' : undefined }}
+                onClick={() => handleOpenDetail(order)}
+            >
+                <div style={{ width: 80, height: 80, borderRadius: 8, overflow: 'hidden', marginRight: 16, flexShrink: 0 }}>
+                    {order.mockupUrl ? (
+                        <Image
+                            src={order.mockupUrl}
+                            preview={false}
+                            width="100%"
+                            height="100%"
+                            style={{ objectFit: 'cover' }}
+                            fallback="https://placehold.co/80x80/e6e6e6/a3a3a3?text=Img"
+                        />
+                    ) : (
+                        <div style={{ width: '100%', height: '100%', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <CloudUploadOutlined style={{ color: '#ccc' }} />
+                        </div>
+                    )}
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: 800, fontSize: 18, color: isUrgent ? '#cf1322' : '#eb2f96', lineHeight: 1.2 }}>
+                                {isUrgent && <FireFilled style={{ marginRight: 4 }} />} #{order.readableId}
+                            </span>
+                            <span style={{ fontSize: 13, color: '#666', background: '#f5f5f5', padding: '2px 8px', borderRadius: 4, marginTop: 4, maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {order.title}
+                            </span>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 11, color: '#999' }}>
+                                {order.created_at ? dayjs((order.created_at as any).toDate ? (order.created_at as any).toDate() : order.created_at).format('DD/MM HH:mm') : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                        {deadlineDisplay && <Tag color={isUrgent ? 'red' : 'default'} style={{ margin: 0 }}>{deadlineDisplay}</Tag>}
+                        {order.sku && <Tag color="blue" style={{ margin: 0 }}>{order.sku}</Tag>}
+                        <span style={{ fontSize: 13, color: '#666', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {order.description || 'No desc'}
+                        </span>
+                    </div>
+                </div>
+                {isCS && (
+                    <div style={{ display: 'flex', alignItems: 'center', paddingLeft: 12 }}>
+                        <Popconfirm title="Xóa?" onConfirm={() => handleDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText="Xóa" cancelText="Hủy">
+                            <Button type="text" danger icon={<DeleteOutlined />} onClick={e => e.stopPropagation()} />
+                        </Popconfirm>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const renderTabContent = () => {
         if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Spin size="large" /></div>;
         if (filteredOrders.length === 0) return <Empty description="Trống" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+
+        if (viewMode === 'list') {
+            return <div style={{ padding: 16 }}>{filteredOrders.map(renderOrderRow)}</div>;
+        }
         return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, padding: 16 }}>{filteredOrders.map(renderOrderCard)}</div>;
     };
 
     const tabItems = [
-        { key: 'new', label: <span>New {(isCS || isDS) && <Badge count={getFilteredOrders('new').length} style={{ backgroundColor: '#eb2f96' }} />}</span>, children: renderTabContent('new') },
-        { key: 'doing', label: <span>Doing {(isCS || isDS) && <Badge count={getFilteredOrders('doing').length} />}</span>, children: renderTabContent('doing') },
-        { key: 'in_review', label: <span>In Review {(isCS || isDS) && <Badge count={getFilteredOrders('in_review').length} style={{ backgroundColor: '#52c41a' }} />}</span>, children: renderTabContent('in_review') },
-        { key: 'need_fix', label: <span>Need Fix {(isCS || isDS) && <Badge count={getFilteredOrders('need_fix').length} style={{ backgroundColor: '#faad14' }} />}</span>, children: renderTabContent('need_fix') },
-        { key: 'done', label: 'Done', children: renderTabContent('done') },
+        { key: 'new', label: 'New', children: null },
+        { key: 'doing', label: 'Doing', children: null },
+        { key: 'in_review', label: 'In Review', children: null },
+        { key: 'need_fix', label: 'Need Fix', children: null },
+        { key: 'done', label: 'Done', children: null },
     ];
+    // Note: Children are handled by common renderTabContent, but Ant Tabs expects 'children' if using Items.
+    // Actually we render content BELOW Tabs, not inside, to keep Pagination cleanly separate?
+    // OR we render Pagination INSIDE each Tab?
+    // User requested: "thanh kiểu như này nằm ngay dưới thanh tab".
+    // So: [Tabs Bar]
+    //     [Pagination Bar]
+    //     [Grid Content]
+    // This implies Tabs operates as a Filter Controller, not carrying content directly?
+    // AntD Tabs usually switches content.
+    // Strategy: Render Pagination + Grid in the `children` of ALL tabs? Or just have Tabs be Header and content is outside?
+    // If Tabs is just header, we can use `renderTabBar` or just `items` without children and handle content separately.
+    // Let's use `items` with empty children and render content below.
 
     return (
         <Layout style={{ minHeight: '100vh', background: '#fff0f6' }}>
             <AppHeader
                 onNewTask={isCS ? () => setIsNewTaskModalOpen(true) : undefined}
             />
-            <Content style={{ padding: 24 }}>
-                <div style={{ background: '#fff', borderRadius: 12, minHeight: 'calc(100vh - 140px)' }}>
-                    <Tabs
-                        activeKey={activeTab}
-                        onChange={(key) => navigate('/' + key)}
-                        items={tabItems}
-                        tabBarStyle={{ padding: '0 24px' }}
-                        style={{ marginTop: 12 }}
-                        tabBarExtraContent={
-                            <SearchInput
-                                value={searchText}
-                                onChange={setSearchText}
-                                style={{ width: 300, marginRight: 16 }}
+            <Content style={{ padding: 18 }}>
+                <div style={{ background: '#fff', borderRadius: 12, minHeight: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{height:'80px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 24px' }}>
+                        <Tabs
+                            activeKey={activeTab}
+                            onChange={(key) => navigate('/' + key)}
+                            items={tabItems}
+                            tabBarStyle={{ margin: 0, border: 'none' }}
+                            style={{ flex: 1 }}
+                            tabBarExtraContent={
+                                <SearchInput
+                                    value={searchText}
+                                    onChange={setSearchText}
+                                    style={{ width: 300 }}
+                                />
+                            }
+                        />
+                    </div>
+
+                    {/* Pagination Bar (Cinematic) */}
+                    <div style={{
+                        padding: '12px 24px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        background: '#fafafa',
+                        borderBottom: '1px solid #eee'
+                    }}>
+                        <Pagination
+                            className="cinematic-pagination"
+                            current={page}
+                            total={total}
+                            pageSize={pageSize}
+                            onChange={handlePageChange}
+                            showSizeChanger={false}
+                            pageSizeOptions={['25']}
+                            showTotal={(total, range) => `${range[0]}-${range[1]} of ${total} items`}
+                            size="small"
+                        />
+                        <div style={{ display: 'flex', gap: 8, background: '#fff', padding: 4, borderRadius: 8, border: '1px solid #eee' }}>
+                            <AppstoreOutlined
+                                className={`view-switcher-icon ${viewMode === 'grid' ? 'active' : ''}`}
+                                onClick={() => setViewMode('grid')}
                             />
-                        }
-                    />
+                            <BarsOutlined
+                                className={`view-switcher-icon ${viewMode === 'list' ? 'active' : ''}`}
+                                onClick={() => setViewMode('list')}
+                            />
+                        </div>
+                    </div>
+
+                    <div style={{ flex: 1 }}>
+                        {renderTabContent()}
+                    </div>
                 </div>
             </Content>
 
@@ -277,4 +412,5 @@ const Dashboard: React.FC = () => {
         </Layout>
     );
 };
+
 export default Dashboard;

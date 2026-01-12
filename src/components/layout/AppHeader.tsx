@@ -76,7 +76,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
                     position: 'sticky',
                     top: 0,
                     zIndex: 10,
-                    height: 64,
+                    height: 80,
                 }}
             >
                 {/* Left Side: Logo + Search */}
