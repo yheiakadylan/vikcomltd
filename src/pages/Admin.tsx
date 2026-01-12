@@ -60,6 +60,9 @@ const Admin: React.FC = () => {
             }
         } catch (error) {
             console.error("Error checking dropbox:", error);
+            setDropboxConnected(false);
+            setDropboxInfo(null);
+            message.error("Kết nối Dropbox hết hạn hoặc lỗi. Vui lòng kết nối lại.");
         }
     };
 

@@ -1,6 +1,6 @@
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging, isSupported } from "firebase/messaging";
 import type { Order, User } from '../types';
@@ -61,10 +61,6 @@ export const saveSystemSettings = async (settings: any) => {
 };
 
 
-export const updateOrder = async (orderId: string, data: any) => {
-    const orderRef = doc(db, 'tasks', orderId);
-    await updateDoc(orderRef, data);
-};
 
 export const deleteOrder = async (orderId: string) => {
     const orderRef = doc(db, 'tasks', orderId);
@@ -122,3 +118,43 @@ export const createSecondaryUser = async (email: string, pass: string) => {
 };
 
 export default app;
+
+/**
+ * Activity Logs
+ */
+export const addOrderLog = async (taskId: string, logData: any) => {
+    try {
+        const logsRef = collection(db, 'tasks', taskId, 'logs');
+        await addDoc(logsRef, {
+            ...logData,
+            createdAt: new Date()
+        });
+    } catch (e) {
+        console.error("Error adding log:", e);
+    }
+};
+
+export const subscribeToLogs = (taskId: string, callback: (logs: any[]) => void) => {
+    const logsRef = collection(db, 'tasks', taskId, 'logs');
+    const q = query(logsRef, orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+        const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(logs);
+    });
+};
+
+export const updateOrder = async (orderId: string, data: any) => {
+    const orderRef = doc(db, 'tasks', orderId);
+    await updateDoc(orderRef, data);
+
+    // Automatic Logging
+    const currentUser = auth.currentUser;
+    if (currentUser && data.status) {
+        await addOrderLog(orderId, {
+            actorId: currentUser.uid,
+            actorName: currentUser.displayName || 'Unknown',
+            action: 'status_change',
+            content: `Changed status to "${data.status}"`
+        });
+    }
+};

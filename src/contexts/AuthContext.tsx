@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import type { User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import type { AppUser } from '../types';
 
@@ -29,35 +29,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        let unsubscribeSnapshot: (() => void) | undefined;
+
+        const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
             setUser(firebaseUser);
             if (firebaseUser) {
-                // Fetch custom user details from Firestore
-                try {
-                    const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-                    if (userDoc.exists()) {
-                        setAppUser(userDoc.data() as AppUser);
+                // Real-time listener for user profile
+                unsubscribeSnapshot = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap: any) => {
+                    if (docSnap.exists()) {
+                        setAppUser({ ...docSnap.data(), uid: firebaseUser.uid } as AppUser);
                     } else {
                         console.error('User document not found in Firestore');
-                        // Fallback for demo/dev if user doesn't exist in DB yet
+                        // Fallback
                         setAppUser({
                             uid: firebaseUser.uid,
                             email: firebaseUser.email || '',
                             displayName: firebaseUser.displayName || 'Demo User',
-                            role: 'CS', // Defaulting to CS for testing if not set
+                            role: 'CS',
                             avatar: firebaseUser.photoURL || undefined
                         });
                     }
-                } catch (error) {
-                    console.error("Error fetching user details:", error);
-                }
+                    setLoading(false);
+                }, (error: any) => {
+                    console.error("Error fetching user profile:", error);
+                    setLoading(false);
+                });
             } else {
+                if (unsubscribeSnapshot) unsubscribeSnapshot();
                 setAppUser(null);
+                setLoading(false);
             }
-            setLoading(false);
         });
 
-        return unsubscribe;
+        return () => {
+            unsubscribeAuth();
+            if (unsubscribeSnapshot) unsubscribeSnapshot();
+        };
     }, []);
 
     const signIn = async (email: string, pass: string) => {

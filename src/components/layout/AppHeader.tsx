@@ -83,9 +83,9 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask, searchText = '', onSea
             >
                 {/* Left Side: Logo + Search */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 24, fontWeight: 'bold', color: '#c41d7f', whiteSpace: 'nowrap' }}>
+                {/* <div style={{ fontSize: 24, fontWeight: 'bold', color: '#c41d7f', whiteSpace: 'nowrap' }}>
                         PINK<span style={{ color: '#262626' }}>Y</span>
-                    </div>
+                    </div>*/}
                     <Search
                         placeholder="Tìm kiếm..."
                         allowClear
@@ -113,16 +113,18 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask, searchText = '', onSea
                         trigger={['click']}
                         placement="bottomRight"
                     >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+                            <div style={{ lineHeight: 'normal', textAlign: 'right' }}>
+                                <div style={{ fontWeight: 600 }}>{user?.displayName}</div>
+                                <div style={{ fontSize: 10, color: '#8c8c8c' }}>
+                                    {user?.role === 'CS' ? 'Customer Service' : user?.role === 'DS' ? 'Designer' : 'Administrator'}
+                                </div>
+                            </div>
                             <Avatar
                                 src={user?.avatar}
                                 icon={<UserOutlined />}
                                 style={{ background: '#ffd6e7', color: '#c41d7f' }}
                             />
-                            <div style={{ lineHeight: 'normal' }}>
-                                <div style={{ fontWeight: 600 }}>{user?.displayName}</div>
-                                <div style={{ fontSize: 10, color: '#8c8c8c' }}>{user?.role}</div>
-                            </div>
                         </div>
                     </Dropdown>
                 </div>

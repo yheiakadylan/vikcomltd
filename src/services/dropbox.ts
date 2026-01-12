@@ -83,6 +83,7 @@ export const getDbxClient = async () => {
         // Refresh token
         dbxAuth.setRefreshToken(refreshToken);
         const response = await dbxAuth.refreshAccessToken() as any;
+        if (!response || !response.result) throw new Error("Could not refresh token. Please re-login.");
 
         const newAccess = response.result.access_token;
         const newExpiresIn = response.result.expires_in;

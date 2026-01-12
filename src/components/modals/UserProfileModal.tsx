@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, Form, Input, Upload, Button, message, Divider, Avatar } from 'antd';
-import { UserOutlined, UploadOutlined, LockOutlined } from '@ant-design/icons';
+import { Modal, Form, Input, Upload, Button, message, Avatar, Tabs } from 'antd';
+import { UserOutlined, UploadOutlined } from '@ant-design/icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -27,13 +27,19 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onCancel }) =
         try {
             let newAvatarUrl = avatarUrl;
 
-            // Upload new avatar to Dropbox if selected
-            if (avatarFile && avatarFile.originFileObj) {
+            if (avatarFile) {
+                // Path: /PINK_POD_SYSTEM/Avartar/{email}/filename
+                const safeEmail = user.email || user.uid;
+                // avatarFile set in beforeUpload is the File object itself (RcFile)
+                const fileToUpload = (avatarFile as any).originFileObj || avatarFile;
+
                 const result = await uploadFileToDropbox(
-                    avatarFile.originFileObj,
-                    `/PINK_POD_SYSTEM/Avatars/${user.uid}_${Date.now()}.jpg`
+                    fileToUpload,
+                    `/PINK_POD_SYSTEM/Avartar/${safeEmail}/${fileToUpload.name}`
                 );
-                newAvatarUrl = (result as any).url || avatarUrl;
+                const uploadedUrl = (result as any).url || (result as any).preview_url;
+                if (!uploadedUrl) throw new Error("Upload thành công nhưng không lấy được link ảnh.");
+                newAvatarUrl = uploadedUrl;
             }
 
             // Update Firestore
@@ -44,8 +50,8 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onCancel }) =
 
             message.success('Cập nhật thông tin thành công!');
             setAvatarFile(null);
-            // Reload page to reflect changes
-            setTimeout(() => window.location.reload(), 1000);
+            // No reload needed due to onSnapshot in AuthContext
+            onCancel();
         } catch (error) {
             console.error(error);
             message.error('Lỗi khi cập nhật thông tin');
@@ -84,129 +90,219 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onCancel }) =
 
     return (
         <Modal
-            title="Thông tin cá nhân"
+            title={null}
             open={open}
             onCancel={onCancel}
             footer={null}
-            width={600}
+            width={700}
+            styles={{ body: { padding: 0, overflow: 'hidden', borderRadius: 12 } }}
+            centered
         >
-            {/* Profile Section */}
-            <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                <Avatar
-                    size={80}
-                    src={avatarUrl}
-                    icon={<UserOutlined />}
-                    style={{ marginBottom: 8 }}
-                />
-                <div style={{ fontWeight: 'bold', fontSize: 18 }}>{user?.displayName}</div>
-                <div style={{ color: '#8c8c8c' }}>{user?.email}</div>
-                <div style={{ marginTop: 4 }}>
+            <div style={{ display: 'flex', height: 520 }}>
+                {/* Left Sidebar / Header for Mobile */}
+                <div style={{
+                    width: 250,
+                    background: 'linear-gradient(135deg, #fff0f6 0%, #ffd6e7 100%)',
+                    padding: '40px 20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    borderRight: '1px solid #f0f0f0'
+                }}>
+                    <div style={{ position: 'relative', marginBottom: 16 }}>
+                        <Avatar
+                            size={100}
+                            src={avatarUrl}
+                            icon={<UserOutlined />}
+                            style={{
+                                border: '4px solid #fff',
+                                boxShadow: '0 4px 12px rgba(235, 47, 150, 0.2)',
+                                background: '#fff'
+                            }}
+                        />
+                        <div style={{
+                            position: 'absolute',
+                            bottom: 0,
+                            right: 0,
+                            background: '#eb2f96',
+                            width: 32,
+                            height: 32,
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            border: '2px solid #fff',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                        }}>
+                            <Upload
+                                maxCount={1}
+                                accept="image/*"
+                                showUploadList={false}
+                                beforeUpload={(file) => {
+                                    setAvatarFile(file as any);
+                                    const reader = new FileReader();
+                                    reader.onload = (e) => setAvatarUrl(e.target?.result as string);
+                                    reader.readAsDataURL(file);
+                                    return false;
+                                }}
+                            >
+                                <UploadOutlined style={{ color: '#fff', fontSize: 16 }} />
+                            </Upload>
+                        </div>
+                    </div>
+
+                    <h3 style={{ margin: '8px 0 4px', fontSize: 18, color: '#1f1f1f', textAlign: 'center' }}>
+                        {user?.displayName}
+                    </h3>
+                    <div style={{ fontSize: 13, color: '#666', marginBottom: 12 }}>{user?.email}</div>
+
                     <span style={{
-                        background: user?.role === 'ADMIN' ? '#f5222d' : user?.role === 'CS' ? '#1890ff' : '#52c41a',
-                        color: '#fff',
-                        padding: '2px 8px',
-                        borderRadius: 4,
+                        background: '#fff',
+                        color: '#eb2f96',
+                        padding: '4px 12px',
+                        borderRadius: 20,
                         fontSize: 12,
+                        fontWeight: 600,
+                        border: '1px solid #ffadd2'
                     }}>
-                        {user?.role}
+                        {user?.role === 'CS' ? 'Customer Service' : user?.role === 'DS' ? 'Designer' : 'Administrator'}
                     </span>
                 </div>
-            </div>
 
-            <Divider>Cập nhật thông tin</Divider>
+                {/* Right Content */}
+                <div style={{ flex: 1, padding: '30px', background: '#fff', overflowY: 'auto' }}>
+                    <Tabs
+                        defaultActiveKey="1"
+                        items={[
+                            {
+                                key: '1',
+                                label: 'Thông tin chung',
+                                children: (
+                                    <div style={{ paddingTop: 10 }}>
+                                        <b style={{ display: 'block', marginBottom: 20, fontSize: 16, color: '#333' }}>
+                                            Chỉnh sửa thông tin
+                                        </b>
+                                        <Form
+                                            form={form}
+                                            layout="vertical"
+                                            onFinish={handleUpdateProfile}
+                                            initialValues={{ displayName: user?.displayName }}
+                                        >
+                                            <Form.Item
+                                                name="displayName"
+                                                label="Tên hiển thị"
+                                                rules={[{ required: true, message: 'Vui lòng nhập tên' }]}
+                                            >
+                                                <Input
+                                                    size="large"
+                                                    prefix={<UserOutlined style={{ color: '#eb2f96' }} />}
+                                                    style={{ borderRadius: 8 }}
+                                                />
+                                            </Form.Item>
 
-            <Form
-                form={form}
-                layout="vertical"
-                onFinish={handleUpdateProfile}
-                initialValues={{ displayName: user?.displayName }}
-            >
-                <Form.Item
-                    name="displayName"
-                    label="Tên hiển thị"
-                    rules={[{ required: true, message: 'Vui lòng nhập tên' }]}
-                >
-                    <Input prefix={<UserOutlined />} placeholder="Nhập tên hiển thị" />
-                </Form.Item>
-
-                <Form.Item label="Avatar">
-                    <Upload
-                        maxCount={1}
-                        accept="image/*"
-                        beforeUpload={(file) => {
-                            setAvatarFile(file as any);
-                            // Preview
-                            const reader = new FileReader();
-                            reader.onload = (e) => {
-                                setAvatarUrl(e.target?.result as string);
-                            };
-                            reader.readAsDataURL(file);
-                            return false;
-                        }}
-                        onRemove={() => {
-                            setAvatarFile(null);
-                            setAvatarUrl(user?.avatar || '');
-                        }}
-                    >
-                        <Button icon={<UploadOutlined />}>Chọn ảnh mới</Button>
-                    </Upload>
-                    <small style={{ color: '#8c8c8c' }}>Ảnh sẽ được lưu vào Dropbox</small>
-                </Form.Item>
-
-                <Button type="primary" htmlType="submit" loading={loading} block>
-                    Cập nhật thông tin
-                </Button>
-            </Form>
-
-            <Divider>Đổi mật khẩu</Divider>
-
-            <Form
-                form={passwordForm}
-                layout="vertical"
-                onFinish={handleChangePassword}
-            >
-                <Form.Item
-                    name="oldPassword"
-                    label="Mật khẩu cũ"
-                    rules={[{ required: true, message: 'Vui lòng nhập mật khẩu cũ' }]}
-                >
-                    <Input.Password prefix={<LockOutlined />} placeholder="Nhập mật khẩu cũ" />
-                </Form.Item>
-
-                <Form.Item
-                    name="newPassword"
-                    label="Mật khẩu mới"
-                    rules={[
-                        { required: true, message: 'Vui lòng nhập mật khẩu mới' },
-                        { min: 6, message: 'Mật khẩu ít nhất 6 ký tự' }
-                    ]}
-                >
-                    <Input.Password prefix={<LockOutlined />} placeholder="Nhập mật khẩu mới" />
-                </Form.Item>
-
-                <Form.Item
-                    name="confirmPassword"
-                    label="Xác nhận mật khẩu"
-                    dependencies={['newPassword']}
-                    rules={[
-                        { required: true, message: 'Vui lòng xác nhận mật khẩu' },
-                        ({ getFieldValue }) => ({
-                            validator(_, value) {
-                                if (!value || getFieldValue('newPassword') === value) {
-                                    return Promise.resolve();
-                                }
-                                return Promise.reject(new Error('Mật khẩu không khớp!'));
+                                            <div style={{ marginTop: 40, textAlign: 'right' }}>
+                                                <Button type="text" onClick={onCancel} style={{ marginRight: 10 }}>
+                                                    Hủy bỏ
+                                                </Button>
+                                                <Button
+                                                    type="primary"
+                                                    htmlType="submit"
+                                                    loading={loading}
+                                                    size="large"
+                                                    style={{
+                                                        background: '#eb2f96',
+                                                        borderColor: '#eb2f96',
+                                                        borderRadius: 8,
+                                                        fontWeight: 500,
+                                                        boxShadow: '0 4px 14px rgba(235, 47, 150, 0.3)'
+                                                    }}
+                                                >
+                                                    Lưu thay đổi
+                                                </Button>
+                                            </div>
+                                        </Form>
+                                    </div>
+                                )
                             },
-                        }),
-                    ]}
-                >
-                    <Input.Password prefix={<LockOutlined />} placeholder="Nhập lại mật khẩu mới" />
-                </Form.Item>
+                            {
+                                key: '2',
+                                label: 'Đổi mật khẩu',
+                                children: (
+                                    <div style={{ paddingTop: 10 }}>
+                                        <b style={{ display: 'block', marginBottom: 20, fontSize: 16, color: '#333' }}>
+                                            Đổi mật khẩu
+                                        </b>
+                                        <Form
+                                            form={passwordForm}
+                                            layout="vertical"
+                                            onFinish={handleChangePassword}
+                                        >
+                                            <Form.Item
+                                                name="oldPassword"
+                                                label="Mật khẩu hiện tại"
+                                                rules={[{ required: true, message: 'Nhập mật khẩu cũ' }]}
+                                            >
+                                                <Input.Password size="large" style={{ borderRadius: 8 }} />
+                                            </Form.Item>
 
-                <Button type="primary" htmlType="submit" loading={loading} block danger>
-                    Đổi mật khẩu
-                </Button>
-            </Form>
+                                            <Form.Item
+                                                name="newPassword"
+                                                label="Mật khẩu mới"
+                                                rules={[
+                                                    { required: true, message: 'Nhập mật khẩu mới' },
+                                                    { min: 6, message: 'Tối thiểu 6 ký tự' }
+                                                ]}
+                                            >
+                                                <Input.Password size="large" style={{ borderRadius: 8 }} />
+                                            </Form.Item>
+
+                                            <Form.Item
+                                                name="confirmPassword"
+                                                label="Xác nhận mật khẩu mới"
+                                                dependencies={['newPassword']}
+                                                rules={[
+                                                    { required: true, message: 'Xác nhận lại mật khẩu' },
+                                                    ({ getFieldValue }) => ({
+                                                        validator(_, value) {
+                                                            if (!value || getFieldValue('newPassword') === value) {
+                                                                return Promise.resolve();
+                                                            }
+                                                            return Promise.reject(new Error('Mật khẩu không khớp!'));
+                                                        },
+                                                    }),
+                                                ]}
+                                            >
+                                                <Input.Password size="large" style={{ borderRadius: 8 }} />
+                                            </Form.Item>
+
+                                            <div style={{ marginTop: 40, textAlign: 'right' }}>
+                                                <Button type="text" onClick={onCancel} style={{ marginRight: 10 }}>
+                                                    Hủy bỏ
+                                                </Button>
+                                                <Button
+                                                    type="primary"
+                                                    htmlType="submit"
+                                                    loading={loading}
+                                                    size="large"
+                                                    style={{
+                                                        background: '#eb2f96',
+                                                        borderColor: '#eb2f96',
+                                                        borderRadius: 8,
+                                                        fontWeight: 500
+                                                    }}
+                                                >
+                                                    Cập nhật mật khẩu
+                                                </Button>
+                                            </div>
+                                        </Form>
+                                    </div>
+                                )
+                            }
+                        ]}
+                    />
+                </div>
+            </div>
         </Modal>
     );
 };
