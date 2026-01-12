@@ -1,6 +1,6 @@
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc, deleteDoc, addDoc, getCountFromServer, limit, startAfter, QueryDocumentSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc, deleteDoc, addDoc, getCountFromServer, limit, startAfter, QueryDocumentSnapshot, runTransaction } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging, isSupported } from "firebase/messaging";
 import type { Order, User } from '../types';
@@ -185,5 +185,41 @@ export const updateOrder = async (orderId: string, data: any) => {
             action: 'status_change',
             content: `Changed status to "${data.status}"`
         });
+    }
+};
+
+export const claimOrder = async (orderId: string, userId: string) => {
+    const orderRef = doc(db, 'tasks', orderId);
+
+    try {
+        await runTransaction(db, async (transaction) => {
+            const sfDoc = await transaction.get(orderRef);
+            if (!sfDoc.exists()) {
+                throw new Error("Task does not exist!");
+            }
+
+            const data = sfDoc.data();
+            if (data.status !== 'new') {
+                throw new Error("Task has already been claimed by someone else!");
+            }
+
+            transaction.update(orderRef, {
+                status: 'doing',
+                designerId: userId,
+                updatedAt: new Date()
+            });
+        });
+
+        // Log outside transaction (less critical)
+        await addOrderLog(orderId, {
+            actorId: userId, // The claimer
+            actorName: 'Designer', // Simplified or fetch name if needed, but userId is stored
+            action: 'claim',
+            content: 'Claimed this task'
+        });
+
+    } catch (e) {
+        console.error("Transaction failed: ", e);
+        throw e; // Propagate error to UI
     }
 };

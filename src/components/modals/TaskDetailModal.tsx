@@ -4,7 +4,7 @@ import { Modal, Form, Input, Button, Upload, message, Tag, Row, Col, Image, Divi
 import { InboxOutlined, CloudUploadOutlined, FileOutlined, FileImageOutlined, DeleteOutlined, UserOutlined, ClockCircleOutlined, SendOutlined, PaperClipOutlined, SaveOutlined } from '@ant-design/icons';
 import type { Order, FileAttachment, User } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-import { updateOrder, getUsers, subscribeToLogs, addOrderLog } from '../../services/firebase';
+import { updateOrder, getUsers, subscribeToLogs, addOrderLog, claimOrder } from '../../services/firebase';
 import { uploadFileToDropbox } from '../../services/dropbox';
 import { colors } from '../../theme/themeConfig';
 
@@ -78,11 +78,14 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
     const handleClaim = async () => {
         if (!order || !appUser) return;
         try {
-            await updateOrder(order.id, { status: 'doing', designerId: appUser.uid, updatedAt: new Date() });
-            message.success('Đã nhận task!');
+            await claimOrder(order.id, appUser.uid);
+            message.success('Đã nhận task thành công!');
             onUpdate();
             onCancel();
-        } catch (e) { message.error('Lỗi nhận task'); }
+        } catch (e: any) {
+            console.error(e);
+            message.error(e.message || 'Lỗi nhận task. Có thể người khác đã nhận rồi.');
+        }
     };
 
     const handleApprove = async () => {
