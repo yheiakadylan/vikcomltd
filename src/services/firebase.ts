@@ -1,9 +1,11 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getMessaging, isSupported } from "firebase/messaging"; // Added
 import type { Order, User } from '../types';
 
+// Firebase configuration - uses VITE_ prefix for client-side access
 const firebaseConfig = {
     apiKey: "AIzaSyCMfkDrGBzVa2ungr5iX8VDNpfdssw1RhA",
     authDomain: "servertest-25b17.firebaseapp.com",
@@ -13,12 +15,37 @@ const firebaseConfig = {
     appId: "1:1056476786050:web:e60baea741d839de3ab39b"
 };
 
+// Validate all required Firebase config values (Optional: only if you are sure env vars are set)
+// const requiredFields = ['apiKey', 'authDomain', 'projectId', 'messagingSenderId', 'appId'];
+// for (const field of requiredFields) {
+//   if (!firebaseConfig[field as keyof typeof firebaseConfig]) {
+//     console.warn(`Firebase config warning: ${field} is missing.`);
+//   }
+// }
+
 const app = initializeApp(firebaseConfig);
 
 export { app };
 export const auth = getAuth(app);
+auth.languageCode = 'en'; // Defaults to English
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// HÀM QUAN TRỌNG: Khởi tạo messaging an toàn
+export const getMessagingInstance = async () => {
+    try {
+        const supported = await isSupported();
+        if (supported) {
+            return getMessaging(app);
+        }
+        console.warn("Firebase Messaging is not supported in this browser.");
+        return null;
+    } catch (err) {
+        console.error("Error checking messaging support:", err);
+        return null;
+    }
+};
+
 export { orderBy, where };
 
 export const updateOrder = async (orderId: string, data: any) => {
@@ -56,6 +83,24 @@ export const subscribeToOrders = (onData: (orders: Order[]) => void, onError?: (
     });
 
     return unsubscribe;
+};
+
+/**
+ * Creates a new user using a secondary Firebase App to avoid logging out the current user.
+ */
+export const createSecondaryUser = async (email: string, pass: string) => {
+    const secondaryApp = initializeApp(firebaseConfig, "Secondary");
+    const secondaryAuth = getAuth(secondaryApp);
+
+    try {
+        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, pass);
+        // We must sign out immediately from the secondary app just in case, 
+        // though deleting the app should handle it.
+        await signOut(secondaryAuth);
+        return userCredential.user.uid;
+    } finally {
+        await deleteApp(secondaryApp);
+    }
 };
 
 export default app;

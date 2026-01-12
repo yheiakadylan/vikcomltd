@@ -1,38 +1,67 @@
 import React from 'react';
-import { ConfigProvider, App as AntdApp } from 'antd';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { themeConfig } from './theme/themeConfig';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
 import AuthCallback from './pages/AuthCallback';
+import AppHeader from './components/layout/AppHeader';
+import { Spin, App as AntdApp } from 'antd';
 
-import { AuthProvider } from './contexts/AuthContext';
+// Component bảo vệ Route
+const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) => {
+  const { user, appUser, loading } = useAuth();
 
-const queryClient = new QueryClient();
+  if (loading) return <div className="h-screen flex items-center justify-center"><Spin size="large" tip="Đang tải..." /></div>;
 
-const App: React.FC = () => {
-  return (
-    <ConfigProvider theme={themeConfig}>
-      <AntdApp>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <BrowserRouter>
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/admin" element={<Admin />} />
-                <Route path="/auth/dropbox/callback" element={<AuthCallback />} />
-                <Route path="/:status" element={<Dashboard />} />
-                <Route path="/" element={<Navigate to="/new" replace />} />
-                <Route path="*" element={<Navigate to="/new" replace />} />
-              </Routes>
-            </BrowserRouter>
-          </AuthProvider>
-        </QueryClientProvider>
-      </AntdApp>
-    </ConfigProvider>
-  );
+  // 1. Chưa login -> Đá về Login
+  if (!user) return <Navigate to="/login" replace />;
+
+  // 2. Login rồi nhưng không đúng quyền -> Đá về Dashboard (hoặc trang 403)
+  if (allowedRoles && (!appUser || !allowedRoles.includes(appUser.role))) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
 };
+
+const AppRoutes = () => {
+  const { user } = useAuth();
+  return (
+    <>
+      {user && <AppHeader />} {/* Chỉ hiện Header khi đã login */}
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+
+        {/* Route cho mọi người (CS/DS/Admin) */}
+        <Route path="/" element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        } />
+
+        {/* Route chỉ cho Admin và CS */}
+        <Route path="/admin" element={
+          <ProtectedRoute allowedRoles={['ADMIN', 'CS']}>
+            <Admin />
+          </ProtectedRoute>
+        } />
+      </Routes>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AntdApp>
+        <Router>
+          <AppRoutes />
+        </Router>
+      </AntdApp>
+    </AuthProvider>
+  );
+}
 
 export default App;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Tabs, Table, Button, Modal, Form, Input, Select, Tag, Card, App, Popconfirm, Avatar, Spin } from 'antd';
 import { PlusOutlined, DropboxOutlined, CheckCircleFilled, UserOutlined } from '@ant-design/icons';
-import { getUsers, auth } from '../services/firebase';
+import { getUsers, createSecondaryUser, createUserProfile } from '../services/firebase';
 import { getDropboxAuthUrl, checkDropboxConnection, getDropboxAccountInfo } from '../services/dropbox';
 import { useAuth } from '../contexts/AuthContext';
 import type { User } from '../types';
@@ -53,42 +53,33 @@ const Admin: React.FC = () => {
         try {
             setLoading(true);
 
-            // Get current user's Firebase Auth token
-            const token = await auth.currentUser?.getIdToken();
+            // 1. Create user in Firebase Auth (secondary app)
+            const newUid = await createSecondaryUser(values.email, values.password);
 
-            if (!token) {
-                throw new Error('Không thể xác thực. Vui lòng đăng nhập lại.');
-            }
-
-            // Call Vercel API
-            const response = await fetch('/api/users', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email: values.email,
-                    password: values.password,
-                    displayName: values.displayName,
-                    role: values.role,
-                    adminToken: token,
-                }),
+            // 2. Create user profile in Firestore
+            await createUserProfile({
+                uid: newUid,
+                email: values.email,
+                displayName: values.displayName,
+                role: values.role,
+                isActive: true
             });
 
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || 'Có lỗi xảy ra');
-            }
-
-            console.log('User created:', result);
+            console.log('User created:', newUid);
             message.success('Tạo nhân viên thành công! Nhân viên có thể đăng nhập ngay.');
             setIsModalOpen(false);
             form.resetFields();
             fetchUsers();
         } catch (error: any) {
             console.error(error);
-            const errorMessage = error.message || 'Lỗi khi tạo nhân viên';
+            let errorMessage = 'Lỗi khi tạo nhân viên';
+            if (error.code === 'auth/email-already-in-use') {
+                errorMessage = 'Email này đã được sử dụng!';
+            } else if (error.code === 'auth/weak-password') {
+                errorMessage = 'Mật khẩu quá yếu!';
+            } else {
+                errorMessage = error.message || errorMessage;
+            }
             message.error(errorMessage);
         } finally {
             setLoading(false);
