@@ -76,25 +76,31 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
         const { file, onSuccess, onError } = options;
         setUploading(true);
         try {
-            if (!order) throw new Error("No order");
+            // Logic: Nếu đơn hàng đã có path chuẩn thì dùng, không thì dùng path tạm
+            const folderName = order?.dropboxPath
+                ? `${order.dropboxPath}/Final` // Upload vào sub-folder /Final
+                : `/PINK_POD_SYSTEM/Unsorted/${order?.readableId}/Final`;
 
-            // Upload to /Final subfolder per specification
-            const uploadPath = `${order.dropboxPath}/Final/${file.name}`;
-            const dropboxLink = await uploadFileToDropbox(file, uploadPath);
+            // Gọi Service Dropbox
+            const result = await uploadFileToDropbox(file, folderName);
 
             // Extract URL from shared link result
-            const linkUrl = (dropboxLink as any).url || (dropboxLink as any).path_display || '#';
-            const newFile: FileAttachment = { name: file.name, link: linkUrl };
+            // result typically has 'url' or 'link'. We handle both just in case.
+            const linkUrl = (result as any).link || (result as any).url || (result as any).preview_url || '#';
+            const fileName = (result as any).name || file.name;
 
+            const newFile = { name: fileName, link: linkUrl };
+
+            // Cập nhật state UI ngay lập tức
             setDesignFiles(prev => [...prev, newFile]);
+
             setUploading(false);
             onSuccess("Ok");
-            message.success(`Đã upload ${file.name} lên Dropbox`);
+            message.success(`Đã upload ${file.name}`);
         } catch (err) {
             setUploading(false);
             onError(err);
-            message.error('Upload thất bại. Kiểm tra kết nối Dropbox.');
-            console.error(err);
+            message.error('Lỗi upload. Hãy kiểm tra kết nối Dropbox trong trang Admin.');
         }
     };
 

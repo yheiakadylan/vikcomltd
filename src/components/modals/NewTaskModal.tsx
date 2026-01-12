@@ -47,7 +47,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
 
             const skuPart = values.sku ? `${values.sku}_` : '';
 
-            // STANDARDIZED PATH per specification: /PINK_POD_SYSTEM/YYYY/MM/ID_SKU_Title
+            // STANDARDIZED PATH per specification (Chapter 5): /PINK_POD_SYSTEM/YYYY/MM/ID_SKU_Title
             const dropboxPath = `/PINK_POD_SYSTEM/${year}/${month}/${readableId}_${skuPart}${safeTitle}`;
 
             const newOrderRef = doc(collection(db, "orders"));
