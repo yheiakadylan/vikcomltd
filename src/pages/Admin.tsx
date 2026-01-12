@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Tabs, Table, Button, Modal, Form, Input, Select, Tag, Card, App, Popconfirm, Avatar, Spin } from 'antd';
 import { PlusOutlined, DropboxOutlined, CheckCircleFilled, UserOutlined } from '@ant-design/icons';
-import { getUsers, createSecondaryUser, createUserProfile } from '../services/firebase';
-import { getDropboxAuthUrl, checkDropboxConnection, getDropboxAccountInfo } from '../services/dropbox';
+import { getUsers, createSecondaryUser, createUserProfile, getSystemSettings } from '../services/firebase';
+import { getDropboxAuthUrl, getDropboxAccountInfo } from '../services/dropbox';
 import { useAuth } from '../contexts/AuthContext';
+import AppHeader from '../components/layout/AppHeader';
 import type { User } from '../types';
 
-const { Header, Content } = Layout;
+const { Content } = Layout;
 
 const Admin: React.FC = () => {
     const { message } = App.useApp();
@@ -39,13 +40,26 @@ const Admin: React.FC = () => {
     };
 
     const checkDropbox = async () => {
-        const isConnected = await checkDropboxConnection();
-        setDropboxConnected(isConnected);
-        if (isConnected) {
-            const info = await getDropboxAccountInfo();
-            setDropboxInfo(info);
-        } else {
-            setDropboxInfo(null);
+        try {
+            // 1. Check DB first (Source of Truth)
+            const settings = await getSystemSettings();
+            if (settings?.dropbox?.access_token) {
+                // Sync to LocalStorage for dropbox.ts service to use
+                localStorage.setItem('dropbox_access_token', settings.dropbox.access_token);
+                if (settings.dropbox.refresh_token) {
+                    localStorage.setItem('dropbox_refresh_token', settings.dropbox.refresh_token);
+                }
+                setDropboxConnected(true);
+
+                // Fetch info
+                const info = await getDropboxAccountInfo();
+                setDropboxInfo(info);
+            } else {
+                setDropboxConnected(false);
+                setDropboxInfo(null);
+            }
+        } catch (error) {
+            console.error("Error checking dropbox:", error);
         }
     };
 
@@ -112,6 +126,7 @@ const Admin: React.FC = () => {
             title: 'Email',
             dataIndex: 'email',
             key: 'email',
+            render: (text: string) => text,
         },
         {
             title: 'Vai trò',
@@ -223,9 +238,7 @@ const Admin: React.FC = () => {
 
     return (
         <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
-            <Header style={{ background: '#fff', padding: '0 24px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: 20, fontWeight: 'bold' }}>Admin Panel</div>
-            </Header>
+            <AppHeader />
             <Content style={{ padding: 24 }}>
                 <div style={{ background: '#fff', padding: 24, borderRadius: 8, minHeight: 500 }}>
                     <Tabs items={[

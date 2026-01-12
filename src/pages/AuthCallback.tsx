@@ -2,23 +2,38 @@ import React, { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { App, Spin } from 'antd';
 import { handleDropboxCallback } from '../services/dropbox';
+import { saveSystemSettings } from '../services/firebase'; // Added
 import { colors } from '../theme/themeConfig';
 
 const AuthCallback: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const { message } = App.useApp();
+    const processed = React.useRef(false); // Ref to track if code has been processed
 
     useEffect(() => {
         const processAuth = async () => {
             const code = searchParams.get('code');
-            if (code) {
+            if (code && !processed.current) {
+                processed.current = true; // Mark as processed
                 try {
-                    await handleDropboxCallback(code);
-                    message.success('Connected to Dropbox successfully!');
-                    // Navigate to Admin or Dashboard? Usually Admin since they clicked 'Connect' there.
-                    // But we don't know where they came from without state.
-                    // Default to /admin seems safer if that's where config is.
+                    const result = await handleDropboxCallback(code);
+
+                    // Save tokens to Firestore for persistence across devices/sessions
+                    if (result) {
+                        const { access_token, refresh_token, expires_in } = result as any;
+                        const expiresAt = Date.now() + (expires_in * 1000);
+
+                        await saveSystemSettings({
+                            dropbox: {
+                                access_token,
+                                refresh_token,
+                                expires_at: expiresAt
+                            }
+                        });
+                        message.success('Connected to Dropbox & Global Settings Saved!');
+                    }
+
                     navigate('/admin');
                 } catch (error) {
                     console.error(error);

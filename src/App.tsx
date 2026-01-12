@@ -5,7 +5,6 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
 import AuthCallback from './pages/AuthCallback';
-import AppHeader from './components/layout/AppHeader';
 import { Spin, App as AntdApp } from 'antd';
 
 // Component bảo vệ Route
@@ -26,16 +25,20 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
 };
 
 const AppRoutes = () => {
-  const { user } = useAuth();
   return (
     <>
-      {user && <AppHeader />} {/* Chỉ hiện Header khi đã login */}
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/auth/dropbox/callback" element={<AuthCallback />} />
 
         {/* Route cho mọi người (CS/DS/Admin) */}
         <Route path="/" element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/:status" element={
           <ProtectedRoute>
             <Dashboard />
           </ProtectedRoute>

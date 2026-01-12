@@ -60,7 +60,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask, searchText = '', onSea
                 {/* Left Side: Logo + Search */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 24, fontWeight: 'bold', color: '#c41d7f', whiteSpace: 'nowrap' }}>
-                        PINK<span style={{ color: '#262626' }}>POD</span>
+                        PINK<span style={{ color: '#262626' }}>Y</span>
                     </div>
                     <Search
                         placeholder="Tìm kiếm..."
@@ -95,7 +95,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask, searchText = '', onSea
                                 icon={<UserOutlined />}
                                 style={{ background: '#ffd6e7', color: '#c41d7f' }}
                             />
-                            <div>
+                            <div style={{ lineHeight: 'normal' }}>
                                 <div style={{ fontWeight: 600 }}>{user?.displayName}</div>
                                 <div style={{ fontSize: 10, color: '#8c8c8c' }}>{user?.role}</div>
                             </div>

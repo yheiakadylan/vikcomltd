@@ -1,8 +1,8 @@
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getMessaging, isSupported } from "firebase/messaging"; // Added
+import { getMessaging, isSupported } from "firebase/messaging";
 import type { Order, User } from '../types';
 
 // Firebase configuration - uses VITE_ prefix for client-side access
@@ -14,14 +14,6 @@ const firebaseConfig = {
     messagingSenderId: "1056476786050",
     appId: "1:1056476786050:web:e60baea741d839de3ab39b"
 };
-
-// Validate all required Firebase config values (Optional: only if you are sure env vars are set)
-// const requiredFields = ['apiKey', 'authDomain', 'projectId', 'messagingSenderId', 'appId'];
-// for (const field of requiredFields) {
-//   if (!firebaseConfig[field as keyof typeof firebaseConfig]) {
-//     console.warn(`Firebase config warning: ${field} is missing.`);
-//   }
-// }
 
 const app = initializeApp(firebaseConfig);
 
@@ -47,6 +39,27 @@ export const getMessagingInstance = async () => {
 };
 
 export { orderBy, where };
+
+/**
+ * Settings Management (System-wide)
+ */
+export const getSystemSettings = async () => {
+    try {
+        const docRef = doc(db, 'settings', 'system');
+        const snap = await getDoc(docRef);
+        return snap.exists() ? snap.data() : null;
+    } catch (error) {
+        console.error("Error getting system settings:", error);
+        return null;
+    }
+};
+
+export const saveSystemSettings = async (settings: any) => {
+    const docRef = doc(db, 'settings', 'system');
+    // merge: true so we don't overwrite other settings
+    await setDoc(docRef, settings, { merge: true });
+};
+
 
 export const updateOrder = async (orderId: string, data: any) => {
     const orderRef = doc(db, 'orders', orderId);
