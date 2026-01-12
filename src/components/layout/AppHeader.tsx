@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Layout, Input, Button, Avatar, Dropdown } from 'antd';
-import { PlusOutlined, UserOutlined, SettingOutlined, LogoutOutlined } from '@ant-design/icons';
+import { PlusOutlined, UserOutlined, SettingOutlined, LogoutOutlined, SafetyCertificateOutlined, HomeOutlined } from '@ant-design/icons';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import UserProfileModal from '../modals/UserProfileModal';
 
@@ -14,21 +15,44 @@ interface AppHeaderProps {
 }
 
 const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask, searchText = '', onSearchChange }) => {
+    const navigate = useNavigate();
+    const location = useLocation();
     const { appUser: user, logout } = useAuth();
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
     const isCS = user?.role === 'CS' || user?.role === 'ADMIN';
+    const isAdmin = user?.role === 'ADMIN';
+    const isAdminPage = location.pathname.includes('/admin');
 
-    const userMenuItems = [
+    const userMenuItems: any[] = [
         {
             key: 'profile',
             icon: <SettingOutlined />,
             label: 'Thông tin cá nhân',
             onClick: () => setIsProfileModalOpen(true),
-        },
-        {
-            type: 'divider' as const,
-        },
+        }
+    ];
+
+    if (isAdmin) {
+        if (isAdminPage) {
+            userMenuItems.push({
+                key: 'dashboard',
+                icon: <HomeOutlined />,
+                label: 'Về Dashboard',
+                onClick: () => navigate('/'),
+            });
+        } else {
+            userMenuItems.push({
+                key: 'admin',
+                icon: <SafetyCertificateOutlined />,
+                label: 'Trang Admin',
+                onClick: () => navigate('/admin'),
+            });
+        }
+    }
+
+    userMenuItems.push(
+        { type: 'divider' },
         {
             key: 'logout',
             icon: <LogoutOutlined />,
@@ -38,8 +62,8 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask, searchText = '', onSea
                 logout();
                 window.location.href = '/login';
             },
-        },
-    ];
+        }
+    );
 
     return (
         <>
