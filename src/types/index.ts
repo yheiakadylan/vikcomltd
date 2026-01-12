@@ -22,7 +22,7 @@ export interface FileAttachment {
 
 export interface Order {
     id: string;
-    readableId: number; // ID ngắn #1001
+    readableId: string | number; // ID ngắn #1001
     title: string;
     sku?: string; // Mã sản phẩm
     description: string;
@@ -39,6 +39,8 @@ export interface Order {
     dropboxPath: string; // Folder gốc trên Dropbox
 
     sampleFiles?: FileAttachment[]; // Ảnh mẫu
+    mockupUrl?: string; // New: Link to mockup image
+    customerFiles?: FileAttachment[]; // New: Customer uploaded files
     designFiles?: FileAttachment[]; // File thiết kế Final
 
     created_at?: any;

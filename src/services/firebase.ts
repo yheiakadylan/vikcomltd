@@ -1,6 +1,6 @@
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging, isSupported } from "firebase/messaging";
 import type { Order, User } from '../types';
@@ -62,8 +62,13 @@ export const saveSystemSettings = async (settings: any) => {
 
 
 export const updateOrder = async (orderId: string, data: any) => {
-    const orderRef = doc(db, 'orders', orderId);
+    const orderRef = doc(db, 'tasks', orderId);
     await updateDoc(orderRef, data);
+};
+
+export const deleteOrder = async (orderId: string) => {
+    const orderRef = doc(db, 'tasks', orderId);
+    await deleteDoc(orderRef);
 };
 
 export const getUsers = async (): Promise<User[]> => {
@@ -79,7 +84,7 @@ export const createUserProfile = async (user: User) => {
 
 export const subscribeToOrders = (onData: (orders: Order[]) => void, onError?: (error: any) => void, constraints: any[] = []) => {
     const q = query(
-        collection(db, 'orders'),
+        collection(db, 'tasks'),
         orderBy('created_at', 'desc'),
         ...constraints
     );

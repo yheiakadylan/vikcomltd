@@ -125,20 +125,29 @@ export const uploadFileToDropbox = async (file: File, path: string) => {
         const filePath = response.result.path_display;
         if (!filePath) throw new Error("Upload failed, no path returned");
 
+        const toRawUrl = (u: string) => {
+            const clean = u.replace('?dl=0', '').replace('&dl=0', '');
+            return clean + (clean.includes('?') ? '&' : '?') + 'raw=1';
+        };
+
         // Try getting existing shared link or create new
         try {
             const linkResponse = await dbx.sharingCreateSharedLinkWithSettings({
                 path: filePath
             });
-            return linkResponse.result; // contains .url
+            const url = toRawUrl(linkResponse.result.url);
+            return { ...linkResponse.result, url };
         } catch (linkError: any) {
-            // Check if link already exists
-            if (linkError?.error?.['.tag'] === 'shared_link_already_exists') {
+            // Check if link already exists (Status 409 or tag)
+            if (linkError.status === 409 || linkError?.error?.['.tag'] === 'shared_link_already_exists' || linkError?.error?.error_summary?.includes('shared_link_already_exists')) {
                 const existingLink = await dbx.sharingListSharedLinks({
                     path: filePath,
                     direct_only: true
                 });
-                return existingLink.result.links[0];
+                if (existingLink.result.links.length > 0) {
+                    const url = toRawUrl(existingLink.result.links[0].url);
+                    return { ...existingLink.result.links[0], url };
+                }
             }
             throw linkError;
         }

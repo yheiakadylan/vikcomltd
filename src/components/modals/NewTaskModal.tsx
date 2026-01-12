@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Modal, Form, Input, InputNumber, DatePicker, Upload, Select, Button, Switch, Row, Col, message } from 'antd';
-import { UploadOutlined, FireOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Modal, Form, Input, Button, Switch, Row, Col, message, Tooltip } from 'antd';
+import { UploadOutlined, FireOutlined, DeleteOutlined, EyeOutlined, CloudUploadOutlined, PictureOutlined } from '@ant-design/icons';
 import { colors } from '../../theme/themeConfig';
 import type { Order } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -8,10 +8,9 @@ import { doc, setDoc, collection } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { uploadFileToDropbox } from '../../services/dropbox';
 import dayjs from 'dayjs';
+import ImagePreview from '../common/ImagePreview';
 
 const { TextArea } = Input;
-const { Dragger } = Upload;
-const { Option } = Select;
 
 interface NewTaskModalProps {
     open: boolean;
@@ -19,84 +18,174 @@ interface NewTaskModalProps {
     onSuccess: () => void;
 }
 
+interface CustomFile {
+    uid: string;
+    file: File;
+    name: string; // Editable name
+    preview: string;
+    size: number;
+}
+
 const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }) => {
     const [form] = Form.useForm();
     const { appUser: user } = useAuth();
     const [loading, setLoading] = useState(false);
     const [isUrgent, setIsUrgent] = useState(false);
-    const [fileList, setFileList] = useState<any[]>([]);
+
+    // File States
+    const [mockupFile, setMockupFile] = useState<CustomFile | null>(null);
+    const [customerFiles, setCustomerFiles] = useState<CustomFile[]>([]);
+
+    // Preview Modal State
+    const [previewImage, setPreviewImage] = useState<string>('');
+    const [previewVisible, setPreviewVisible] = useState(false);
+
+    // Reset on open
+    useEffect(() => {
+        if (open) {
+            form.resetFields();
+            setMockupFile(null);
+            setCustomerFiles([]);
+            setIsUrgent(false);
+        }
+    }, [open, form]);
+
+    const handlePreview = (url: string) => {
+        setPreviewImage(url);
+        setPreviewVisible(true);
+    };
+
+    const handleMockupSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            const objectUrl = URL.createObjectURL(file);
+            setMockupFile({
+                uid: 'mockup-' + Date.now(),
+                file,
+                name: file.name,
+                preview: objectUrl,
+                size: file.size
+            });
+        }
+        e.target.value = '';
+    };
+
+    const handleCustomerFilesSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) {
+            const newFiles = Array.from(e.target.files).map((file, index) => {
+                const lastDot = file.name.lastIndexOf('.');
+                const nameWithoutExt = lastDot !== -1 ? file.name.substring(0, lastDot) : file.name;
+                return {
+                    uid: `cust-${Date.now()}-${index}`,
+                    file,
+                    name: nameWithoutExt,
+                    preview: URL.createObjectURL(file),
+                    size: file.size
+                };
+            });
+            setCustomerFiles(prev => [...prev, ...newFiles]);
+        }
+        e.target.value = '';
+    };
+
+    const handleRemoveCustomerFile = (uid: string) => {
+        setCustomerFiles(prev => prev.filter(f => f.uid !== uid));
+    };
+
+    const handleRenameCustomerFile = (uid: string, newName: string) => {
+        setCustomerFiles(prev => prev.map(f => f.uid === uid ? { ...f, name: newName } : f));
+    };
 
     const onFinish = async (values: any) => {
         if (!user) return;
+
+        if (!mockupFile) {
+            message.error('Vui lòng tải lên ảnh Mockup (Bắt buộc)!');
+            return;
+        }
+
         setLoading(true);
         try {
-            // Generate readable ID (6-digit timestamp-based for uniqueness)
-            const readableId = Math.floor(100000 + Math.random() * 900000);
-
-            // Format year and month
+            const readableId = values.readableId;
             const year = dayjs().format('YYYY');
             const month = dayjs().format('MM');
-
-            // Normalize Title for safe folder name (remove Vietnamese accents & special chars)
-            const safeTitle = values.title
-                .normalize("NFD")
-                .replace(/[\u0300-\u036f]/g, "") // Remove diacritics
-                .replace(/đ/g, "d").replace(/Đ/g, "D") // Handle đ/Đ
-                .replace(/[^a-zA-Z0-9]/g, "_") // Replace special chars with underscore
-                .substring(0, 50); // Limit length
+            const safeTitle = (values.title || '')
+                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                .replace(/đ/g, "d").replace(/Đ/g, "D")
+                .replace(/[^a-zA-Z0-9]/g, "_")
+                .substring(0, 50);
 
             const skuPart = values.sku ? `${values.sku}_` : '';
-
-            // STANDARDIZED PATH per specification (Chapter 5): /PINK_POD_SYSTEM/YYYY/MM/ID_SKU_Title
             const dropboxPath = `/PINK_POD_SYSTEM/${year}/${month}/${readableId}_${skuPart}${safeTitle}`;
 
-            const newOrderRef = doc(collection(db, "orders"));
+            const newOrderRef = doc(collection(db, "tasks"));
+
+            // Upload Mockup
+            let mockupResultUrl = '';
+            try {
+                const originalName = mockupFile.file.name;
+                const lastDot = originalName.lastIndexOf('.');
+                const ext = lastDot !== -1 ? originalName.substring(lastDot) : '';
+                const mockupName = `mockup${ext}`;
+
+                const result = await uploadFileToDropbox(
+                    mockupFile.file,
+                    `${dropboxPath}/Mockup/${mockupName}`
+                );
+                mockupResultUrl = (result as any).url || '#';
+            } catch (e) {
+                console.error("Mockup upload failed", e);
+                message.error("Lỗi upload ảnh Mockup!");
+                setLoading(false);
+                return;
+            }
+
+            // Upload Customer Files
+            const uploadedCustomerFiles = [];
+            if (customerFiles.length > 0) {
+                try {
+                    const uploadPromises = customerFiles.map(async (cFile) => {
+                        let fileName = cFile.name;
+                        const originalName = cFile.file.name;
+                        const lastDot = originalName.lastIndexOf('.');
+                        const ext = lastDot !== -1 ? originalName.substring(lastDot) : '';
+                        fileName = fileName + ext;
+
+                        const result = await uploadFileToDropbox(
+                            cFile.file,
+                            `${dropboxPath}/Customer/${fileName}`
+                        );
+                        return { name: fileName, link: (result as any).url || '#' };
+                    });
+
+                    const results = await Promise.all(uploadPromises);
+                    uploadedCustomerFiles.push(...results);
+                } catch (e) {
+                    console.error("Customer files upload failed", e);
+                    message.warning("Một số ảnh khách hàng không upload được.");
+                }
+            }
+
             const orderData: Partial<Order> = {
                 id: newOrderRef.id,
                 readableId: readableId,
-                title: values.title,
-                sku: values.sku,
-                category: values.category || 'T-shirt',
-                quantity: values.quantity || 1,
-                deadline: values.deadline ? values.deadline.toDate() : new Date(),
-                description: values.description,
+                title: values.title || '',
+                sku: values.sku || '',
+                description: values.description || '',
                 status: 'new',
                 isUrgent: isUrgent,
-                createdBy: user.uid,
-                dropboxPath: dropboxPath, // Standardized path saved to DB
+                createdBy: user.uid || '',
+                dropboxPath: dropboxPath,
+                mockupUrl: mockupResultUrl,
+                customerFiles: uploadedCustomerFiles,
                 sampleFiles: [],
                 created_at: new Date(),
                 updatedAt: new Date(),
             };
 
-            // Upload sample files to Dropbox
-            if (fileList.length > 0) {
-                try {
-                    const uploadPromises = fileList.map(async (file) => {
-                        if (file.originFileObj) {
-                            const result = await uploadFileToDropbox(
-                                file.originFileObj,
-                                `${dropboxPath}/Samples/${file.name}`
-                            );
-                            return { name: file.name, link: (result as any).url || '#' };
-                        }
-                        return null;
-                    });
-
-                    const uploadedFiles = await Promise.all(uploadPromises);
-                    orderData.sampleFiles = uploadedFiles.filter(f => f !== null) as any[];
-                } catch (e) {
-                    console.error("Upload error", e);
-                    message.warning("Task created but some files failed to upload to Dropbox.");
-                }
-            }
-
             await setDoc(newOrderRef, orderData);
 
             message.success('Tạo task thành công!');
-            form.resetFields();
-            setFileList([]);
-            setIsUrgent(false);
             onSuccess();
         } catch (error) {
             console.error(error);
@@ -108,16 +197,17 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
 
     return (
         <Modal
-            title={<span style={{ color: colors.primaryPink, fontSize: 18, fontWeight: 600 }}>Create New Task</span>}
+            title={<span style={{ color: colors.primaryPink, fontSize: 20, fontWeight: 700 }}>Create New Task</span>}
             open={open}
             onCancel={onCancel}
             footer={null}
-            width={700}
+            width={800}
             style={{ top: 20 }}
             maskClosable={false}
+            className="pinky-modal"
         >
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <span style={{ marginRight: 8, fontWeight: 500, color: isUrgent ? colors.urgentRed : 'inherit' }}>Urgent?</span>
+                <span style={{ marginRight: 8, fontWeight: 500, color: isUrgent ? colors.urgentRed : '#8c8c8c' }}>Urgent?</span>
                 <Switch
                     checked={isUrgent}
                     onChange={setIsUrgent}
@@ -131,74 +221,252 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                 form={form}
                 layout="vertical"
                 onFinish={onFinish}
-                initialValues={{ quantity: 1, category: 'T-shirt' }}
             >
-                <Form.Item name="title" label="Title" rules={[{ required: true }]}>
-                    <Input placeholder="Task title..." />
-                </Form.Item>
+                <Row gutter={24}>
+                    <Col span={10}>
+                        {/* MOCKUP IMAGE (Required) */}
+                        <Form.Item required label={<span style={{ fontWeight: 600 }}>Ảnh Mockup (Bắt buộc)</span>}>
+                            <div className="mockup-uploader" style={{
+                                width: '100%',
+                                aspectRatio: '1/1',
+                                border: `2px dashed ${mockupFile ? colors.primaryPink : '#d9d9d9'}`,
+                                borderRadius: 12,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                background: mockupFile ? '#fff0f6' : '#fafafa',
+                                cursor: 'pointer',
+                                position: 'relative',
+                                overflow: 'hidden',
+                                transition: 'all 0.3s ease',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                            }}
+                                onClick={() => !mockupFile && document.getElementById('mockup-input')?.click()}
+                                onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = colors.primaryPink; e.currentTarget.style.background = '#fff0f6'; }}
+                                onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = mockupFile ? colors.primaryPink : '#d9d9d9'; e.currentTarget.style.background = mockupFile ? '#fff0f6' : '#fafafa'; }}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.currentTarget.style.borderColor = mockupFile ? colors.primaryPink : '#d9d9d9';
+                                    e.currentTarget.style.background = mockupFile ? '#fff0f6' : '#fafafa';
+                                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                        const file = e.dataTransfer.files[0];
+                                        setMockupFile({
+                                            uid: 'mockup-' + Date.now(),
+                                            file,
+                                            name: file.name,
+                                            preview: URL.createObjectURL(file),
+                                            size: file.size
+                                        });
+                                    }
+                                }}
+                            >
+                                {mockupFile ? (
+                                    <>
+                                        <div style={{ width: '100%', height: '100%', padding: 8 }}>
+                                            <img
+                                                src={mockupFile.preview}
+                                                alt="Mockup"
+                                                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 8 }}
+                                            />
+                                        </div>
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: 0, left: 0, right: 0, bottom: 0,
+                                            background: 'rgba(0,0,0,0.6)',
+                                            backdropFilter: 'blur(2px)',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            justifyContent: 'center',
+                                            alignItems: 'center',
+                                            gap: 12,
+                                            opacity: 0,
+                                            transition: 'opacity 0.2s',
+                                            borderRadius: 12
+                                        }}
+                                            onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                                            onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}
+                                        >
+                                            <Button type="primary" shape="round" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); handlePreview(mockupFile.preview); }}>Xem</Button>
+                                            <Button shape="round" icon={<UploadOutlined />} onClick={(e) => { e.stopPropagation(); document.getElementById('mockup-input')?.click(); }}>Thay đổi</Button>
+                                            <Button danger shape="round" icon={<DeleteOutlined />} onClick={(e) => { e.stopPropagation(); setMockupFile(null); }}>Xóa</Button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div style={{ textAlign: 'center', color: '#8c8c8c', padding: 20 }}>
+                                        <div style={{
+                                            width: 64, height: 64, background: '#fff0f6', borderRadius: '50%',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px',
+                                            color: colors.primaryPink
+                                        }}>
+                                            <PictureOutlined style={{ fontSize: 32 }} />
+                                        </div>
+                                        <div style={{ fontSize: 16, fontWeight: 500, color: '#262626' }}>Tải ảnh Mockup</div>
+                                        <div style={{ fontSize: 13, marginTop: 4 }}>Kéo thả hoặc Click để chọn</div>
+                                    </div>
+                                )}
+                                <input
+                                    type="file"
+                                    id="mockup-input"
+                                    style={{ display: 'none' }}
+                                    accept="image/*"
+                                    onChange={handleMockupSelect}
+                                />
+                            </div>
+                        </Form.Item>
+                    </Col>
+                    <Col span={14}>
+                        <Form.Item name="readableId" label="Order ID" rules={[{ required: true, message: 'Vui lòng nhập Order ID' }]}>
+                            <Input placeholder="Nhập Order ID..." size="large" style={{ borderRadius: 8 }} />
+                        </Form.Item>
 
-                <Row gutter={16}>
-                    <Col span={12}>
+                        <Form.Item name="title" label="Title">
+                            <Input placeholder="Tên sản phẩm (Tùy chọn)..." style={{ borderRadius: 8 }} />
+                        </Form.Item>
+
                         <Form.Item name="sku" label="SKU">
-                            <Input placeholder="Product SKU" />
+                            <Input placeholder="Mã SKU (nếu có)" style={{ borderRadius: 8 }} />
                         </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                        <Form.Item name="category" label="Category">
-                            <Select>
-                                <Option value="T-shirt">T-shirt</Option>
-                                <Option value="Hoodie">Hoodie</Option>
-                                <Option value="Mug">Mug</Option>
-                                <Option value="Canvas">Canvas</Option>
-                            </Select>
+
+                        <Form.Item name="description" label="Description">
+                            <TextArea rows={4} placeholder="Mô tả chi tiết yêu cầu..." style={{ borderRadius: 8 }} />
                         </Form.Item>
                     </Col>
                 </Row>
 
-                <Row gutter={16}>
-                    <Col span={12}>
-                        <Form.Item name="quantity" label="Quantity">
-                            <InputNumber min={1} style={{ width: '100%' }} />
-                        </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                        <Form.Item name="deadline" label="Deadline">
-                            <DatePicker style={{ width: '100%' }} showTime format="YYYY-MM-DD HH:mm" />
-                        </Form.Item>
-                    </Col>
-                </Row>
+                <div style={{ margin: '24px 0', height: 1, background: '#f0f0f0' }} />
 
-                <Form.Item name="description" label="Description">
-                    <TextArea rows={4} placeholder="Detailed instructions..." />
-                </Form.Item>
-
-                <Form.Item label="Sample Images">
-                    <Dragger
-                        multiple
-                        fileList={fileList}
-                        beforeUpload={(file) => {
-                            setFileList([...fileList, file]);
-                            return false; // Prevent auto upload
+                {/* CUSTOMER FILES (Optional) */}
+                <Form.Item label={<span style={{ fontWeight: 600 }}>Ảnh khách gửi (Tùy chọn)</span>}>
+                    <div
+                        style={{
+                            border: `2px dashed ${customerFiles.length > 0 ? colors.primaryPink : '#d9d9d9'}`,
+                            padding: '32px 24px',
+                            borderRadius: 12,
+                            textAlign: 'center',
+                            background: '#fafafa',
+                            marginBottom: 24,
+                            cursor: 'pointer',
+                            transition: 'all 0.3s'
                         }}
-                        onRemove={(file) => {
-                            setFileList(fileList.filter(f => f.uid !== file.uid));
+                        onClick={() => document.getElementById('customer-input')?.click()}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.primaryPink; e.currentTarget.style.background = '#fff0f6'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = customerFiles.length > 0 ? colors.primaryPink : '#d9d9d9'; e.currentTarget.style.background = '#fafafa'; }}
+                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = colors.primaryPink; e.currentTarget.style.background = '#fff0f6'; }}
+                        onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#d9d9d9'; e.currentTarget.style.background = '#fafafa'; }}
+                        onDrop={(e) => {
+                            e.preventDefault();
+                            if (e.dataTransfer.files) {
+                                const newFiles = Array.from(e.dataTransfer.files).map((file, index) => {
+                                    const lastDot = file.name.lastIndexOf('.');
+                                    const nameWithoutExt = lastDot !== -1 ? file.name.substring(0, lastDot) : file.name;
+                                    return {
+                                        uid: `cust-drop-${Date.now()}-${index}`,
+                                        file,
+                                        name: nameWithoutExt,
+                                        preview: URL.createObjectURL(file),
+                                        size: file.size
+                                    };
+                                });
+                                setCustomerFiles(prev => [...prev, ...newFiles]);
+                            }
                         }}
                     >
-                        <p className="ant-upload-drag-icon">
-                            <UploadOutlined style={{ color: colors.primaryPink }} />
-                        </p>
-                        <p className="ant-upload-text">Kéo thả ảnh mẫu vào đây</p>
-                    </Dragger>
+                        <CloudUploadOutlined style={{ fontSize: 48, color: colors.primaryPink, marginBottom: 16 }} />
+                        <div style={{ fontSize: 16, fontWeight: 500 }}>Click hoặc Kéo thả nhiều ảnh vào đây</div>
+                        <input
+                            type="file"
+                            id="customer-input"
+                            style={{ display: 'none' }}
+                            multiple
+                            accept="image/*"
+                            onChange={handleCustomerFilesSelect}
+                        />
+                    </div>
+
+                    {/* Custom File List */}
+                    {customerFiles.length > 0 && (
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                            gap: 16
+                        }}>
+                            {customerFiles.map((file) => (
+                                <div key={file.uid} style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    padding: 12,
+                                    background: '#fff',
+                                    border: '1px solid #ffadd2',
+                                    borderRadius: 12,
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                }}>
+                                    <div
+                                        style={{
+                                            width: 48, height: 48, flexShrink: 0,
+                                            cursor: 'pointer', overflow: 'hidden', borderRadius: 8,
+                                            border: '1px solid #f0f0f0'
+                                        }}
+                                        onClick={() => handlePreview(file.preview)}
+                                    >
+                                        <img src={file.preview} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    </div>
+
+                                    <div style={{ flex: 1, marginLeft: 12, marginRight: 12, overflow: 'hidden' }}>
+                                        <Input
+                                            value={file.name}
+                                            onChange={(e) => handleRenameCustomerFile(file.uid, e.target.value)}
+                                            variant="borderless"
+                                            style={{ padding: 0, fontWeight: 500, width: '100%' }}
+                                            suffix={<span style={{ color: '#8c8c8c' }}>{(() => {
+                                                const originalName = file.file.name;
+                                                const lastDot = originalName.lastIndexOf('.');
+                                                return lastDot !== -1 ? originalName.substring(lastDot) : '';
+                                            })()}</span>}
+                                        />
+                                        <div style={{ fontSize: 11, color: '#8c8c8c' }}>{(file.size / 1024 / 1024).toFixed(2)} MB</div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: 4 }}>
+                                        <Tooltip title="Xem">
+                                            <Button type="text" size="small" icon={<EyeOutlined />} onClick={() => handlePreview(file.preview)} />
+                                        </Tooltip>
+                                        <Tooltip title="Xóa">
+                                            <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleRemoveCustomerFile(file.uid)} />
+                                        </Tooltip>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </Form.Item>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-                    <Button onClick={onCancel}>Cancel</Button>
-                    <Button>Draft</Button>
-                    <Button type="primary" htmlType="submit" loading={loading} style={{ background: colors.primaryPink, borderColor: colors.primaryPink }}>
-                        Save Task
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 32, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
+                    <Button onClick={onCancel} size="large" style={{ borderRadius: 8 }}>Hủy bỏ</Button>
+                    <Button
+                        type="primary"
+                        htmlType="submit"
+                        size="large"
+                        loading={loading}
+                        style={{
+                            background: colors.primaryPink,
+                            borderColor: colors.primaryPink,
+                            borderRadius: 8,
+                            paddingLeft: 32,
+                            paddingRight: 32,
+                            fontWeight: 600,
+                            boxShadow: '0 2px 0 rgba(235, 47, 150, 0.2)'
+                        }}
+                    >
+                        Tạo Task
                     </Button>
                 </div>
             </Form>
+            <ImagePreview
+                src={previewImage}
+                visible={previewVisible}
+                onClose={() => setPreviewVisible(false)}
+            />
         </Modal>
     );
 };

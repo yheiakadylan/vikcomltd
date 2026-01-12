@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Tabs, Button, Badge, Card, Tag, Empty, Spin, App } from 'antd';
-import { FireFilled, ClockCircleOutlined, CloudUploadOutlined, RollbackOutlined } from '@ant-design/icons';
+import { Layout, Tabs, Button, Badge, Card, Tag, Empty, Spin, App, Popconfirm, Image } from 'antd';
+import { FireFilled, ClockCircleOutlined, CloudUploadOutlined, RollbackOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom'; // Added imports
 import { useAuth } from '../contexts/AuthContext';
 import type { Order, OrderStatus } from '../types';
-import { subscribeToOrders, updateOrder, where } from '../services/firebase'; // Added where
+import { subscribeToOrders, where, deleteOrder } from '../services/firebase';
 import { sortOrders } from '../utils/sortOrders';
 import NewTaskModal from '../components/modals/NewTaskModal';
 import TaskDetailModal from '../components/modals/TaskDetailModal';
@@ -123,30 +123,42 @@ const Dashboard: React.FC = () => {
     };
 
     // Actions ... (rest remains similar)
-    const handleClaim = async (e: React.MouseEvent, order: Order) => {
-        e.stopPropagation();
-        try {
-            await updateOrder(order.id, {
-                status: 'doing',
-                designerId: user?.uid,
-                updatedAt: new Date()
-            });
-            message.success(`Đã nhận đơn #${order.readableId}.`);
-            // The subscription will check constraints. 
-            // If DS, 'doing' is NOT 'new'. The item vanishes from this view. Correct.
-        } catch (error) {
-            message.error('Lỗi khi nhận đơn');
-        }
-    };
+
 
     // ... Copy modal handlers ...
     const handleOpenDetail = (order: Order) => { setSelectedOrder(order); setIsDetailModalOpen(true); };
-    const handleOpenReject = (e: React.MouseEvent, order: Order) => { e.stopPropagation(); setSelectedOrder(order); setIsRejectModalOpen(true); };
     const handleOpenGiveBack = (e: React.MouseEvent, order: Order) => { e.stopPropagation(); setSelectedOrder(order); setIsGiveBackModalOpen(true); };
+
+    const handleDelete = async (orderId: string) => {
+        try {
+            await deleteOrder(orderId);
+            message.success('Đã xóa task.');
+        } catch (error) {
+            message.error('Lỗi khi xóa task');
+        }
+    };
 
     // Render Card ... (No change)
     const renderOrderCard = (order: Order) => {
         const isUrgent = order.isUrgent;
+        const deadlineDisplay = order.deadline
+            ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline).format('DD/MM')
+            : null;
+
+        const formatDropboxUrl = (url?: string) => {
+            if (!url) return '';
+            // Fix double question marks if present (repair existing bad data)
+            if (url.includes('?') && url.lastIndexOf('?') > url.indexOf('?')) {
+                return url.replace(/\?raw=1$/, '&raw=1');
+            }
+            if (url.includes('raw=1')) return url;
+            if (url.includes('dropbox.com')) {
+                const clean = url.replace('?dl=0', '').replace('&dl=0', '');
+                return clean + (clean.includes('?') ? '&' : '?') + 'raw=1';
+            }
+            return url;
+        };
+
         return (
             <Card
                 key={order.id}
@@ -155,39 +167,55 @@ const Dashboard: React.FC = () => {
                 style={{ borderColor: isUrgent ? '#f5222d' : undefined, backgroundColor: isUrgent ? '#fff1f0' : undefined }}
                 onClick={() => handleOpenDetail(order)}
                 cover={
-                    <div style={{ height: 160, position: 'relative', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                        {(order.sampleFiles && order.sampleFiles.length > 0) ? (
-                            <img alt="sample" src={(order.sampleFiles[0] as any).link || order.sampleFiles[0]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <div style={{ height: 180, position: 'relative', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {order.mockupUrl ? (
+                            <Image
+                                alt="mockup"
+                                src={formatDropboxUrl(order.mockupUrl)}
+                                preview={false}
+                                width="100%"
+                                height="100%"
+                                style={{ objectFit: 'cover' }}
+                                fallback="https://placehold.co/400x300/e6e6e6/a3a3a3?text=No+Image"
+                            />
                         ) : (
                             <div className="text-gray-300"><CloudUploadOutlined style={{ fontSize: 32, color: '#ccc' }} /></div>
                         )}
                         {isUrgent && <div style={{ position: 'absolute', top: 0, right: 0, background: '#f5222d', color: '#fff', fontSize: 12, fontWeight: 'bold', padding: '4px 8px', borderRadius: '0 0 0 8px' }}>URGENT 🔥</div>}
+                        {isCS && (
+                            <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }} onClick={e => e.stopPropagation()}>
+                                <Popconfirm title="Xóa task?" onConfirm={() => handleDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText="Xóa" cancelText="Hủy">
+                                    <Button shape="circle" size="small" danger icon={<DeleteOutlined />} style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} />
+                                </Popconfirm>
+                            </div>
+                        )}
                     </div>
                 }
                 actions={[
-                    (isDS && order.status === 'new') ? <Button type="link" onClick={(e) => handleClaim(e, order)} style={{ color: '#eb2f96', fontWeight: 'bold' }}>CLAIM</Button> : null,
                     (isDS && order.status === 'doing') ? <Button type="text" danger icon={<RollbackOutlined />} onClick={(e) => handleOpenGiveBack(e, order)}>Trả đơn</Button> : null,
-                    (isCS && order.status === 'in_review') ? <Button type="text" danger onClick={(e) => handleOpenReject(e, order)}>Reject</Button> : null,
                 ].filter(Boolean) as React.ReactNode[]}
             >
                 <Card.Meta
                     title={
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ fontSize: 16, color: isUrgent ? '#cf1322' : '#262626', maxWidth: '75%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={order.title}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: 16, fontWeight: 700, color: isUrgent ? '#cf1322' : '#262626', maxWidth: '75%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={order.title}>
                                 {isUrgent && <FireFilled style={{ marginRight: 4 }} />} {order.title}
                             </span>
                             <span style={{ fontSize: 12, color: '#8c8c8c' }}>#{order.readableId}</span>
                         </div>
                     }
                     description={
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#8c8c8c' }}>
-                                <span><ClockCircleOutlined /> {order.deadline ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline).format('DD/MM') : 'N/A'}</span>
-                                {order.sku && <Tag>{order.sku}</Tag>}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                {deadlineDisplay ? (
+                                    <Tag icon={<ClockCircleOutlined />} color={isUrgent ? 'red' : 'default'} style={{ margin: 0, fontSize: 12 }}>
+                                        {deadlineDisplay}
+                                    </Tag>
+                                ) : <span />}
+                                {order.sku && <Tag color="blue" style={{ margin: 0 }}>{order.sku}</Tag>}
                             </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                                <Tag color="magenta">{order.category}</Tag>
-                                <span style={{ fontWeight: 'bold', color: '#8c8c8c', fontSize: 12 }}>Qty: {order.quantity}</span>
+                            <div style={{ fontSize: 13, color: '#595959', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {order.description || <span style={{ color: '#ccc', fontStyle: 'italic' }}>No desc</span>}
                             </div>
                         </div>
                     }
@@ -195,6 +223,7 @@ const Dashboard: React.FC = () => {
             </Card>
         );
     };
+
 
     const renderTabContent = (status: OrderStatus) => {
         const filteredOrders = getFilteredOrders(status);
@@ -204,10 +233,10 @@ const Dashboard: React.FC = () => {
     };
 
     const tabItems = [
-        { key: 'new', label: <span>New {isCS && <Badge count={getFilteredOrders('new').length} style={{ backgroundColor: '#eb2f96' }} />}</span>, children: renderTabContent('new') },
-        { key: 'doing', label: <span>Doing {isCS && <Badge count={getFilteredOrders('doing').length} />}</span>, children: renderTabContent('doing') }, // DS badge removed
-        { key: 'in_review', label: <span>In Review {isCS && <Badge count={getFilteredOrders('in_review').length} style={{ backgroundColor: '#52c41a' }} />}</span>, children: renderTabContent('in_review') },
-        { key: 'need_fix', label: <span>Need Fix {isCS && <Badge count={getFilteredOrders('need_fix').length} style={{ backgroundColor: '#faad14' }} />}</span>, children: renderTabContent('need_fix') },
+        { key: 'new', label: <span>New {(isCS || isDS) && <Badge count={getFilteredOrders('new').length} style={{ backgroundColor: '#eb2f96' }} />}</span>, children: renderTabContent('new') },
+        { key: 'doing', label: <span>Doing {(isCS || isDS) && <Badge count={getFilteredOrders('doing').length} />}</span>, children: renderTabContent('doing') },
+        { key: 'in_review', label: <span>In Review {(isCS || isDS) && <Badge count={getFilteredOrders('in_review').length} style={{ backgroundColor: '#52c41a' }} />}</span>, children: renderTabContent('in_review') },
+        { key: 'need_fix', label: <span>Need Fix {(isCS || isDS) && <Badge count={getFilteredOrders('need_fix').length} style={{ backgroundColor: '#faad14' }} />}</span>, children: renderTabContent('need_fix') },
         { key: 'done', label: 'Done', children: renderTabContent('done') },
     ];
 
