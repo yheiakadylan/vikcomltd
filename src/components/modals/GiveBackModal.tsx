@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Modal, Button, message, Typography } from 'antd';
 import type { Order } from '../../types';
-import { updateDoc, doc } from 'firebase/firestore';
-import { db } from '../../services/firebase';
+
+import { updateOrder } from '../../services/firebase';
 
 const { Text } = Typography;
 
@@ -20,13 +20,14 @@ const GiveBackModal: React.FC<GiveBackModalProps> = ({ order, open, onCancel, on
         if (!order) return;
         setLoading(true);
         try {
-            await updateDoc(doc(db, "orders", order.id), {
+            await updateOrder(order.id, {
                 status: 'new',
                 designerId: null,
                 updatedAt: new Date()
             });
             message.success("Đã trả lại task!");
             onSuccess();
+            onCancel();
         } catch (e) {
             console.error(e);
             message.error("Lỗi khi trả task");

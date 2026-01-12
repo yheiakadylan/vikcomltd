@@ -68,6 +68,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
             await updateOrder(order.id, { status: 'doing', designerId: appUser.uid, updatedAt: new Date() });
             message.success('Đã nhận task!');
             onUpdate();
+            onCancel();
         } catch (e) { message.error('Lỗi nhận task'); }
     };
 
