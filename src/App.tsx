@@ -7,6 +7,7 @@ import Admin from './pages/Admin';
 import AuthCallback from './pages/AuthCallback';
 import { Spin, App as AntdApp } from 'antd';
 import { UploadProvider } from './contexts/UploadContext';
+import { LanguageProvider } from './contexts/LanguageContext';
 import UploadWidget from './components/common/UploadWidget';
 
 // Component bảo vệ Route
@@ -60,14 +61,16 @@ const AppRoutes = () => {
 function App() {
   return (
     <AuthProvider>
-      <UploadProvider>
-        <AntdApp>
-          <Router>
-            <AppRoutes />
-            <UploadWidget />
-          </Router>
-        </AntdApp>
-      </UploadProvider>
+      <LanguageProvider>
+        <UploadProvider>
+          <AntdApp>
+            <Router>
+              <AppRoutes />
+              <UploadWidget />
+            </Router>
+          </AntdApp>
+        </UploadProvider>
+      </LanguageProvider>
     </AuthProvider>
   );
 }

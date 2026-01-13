@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import dayjs from 'dayjs';
 import { Modal, Form, Input, Button, Upload, message, Tag, Row, Col, Image, Divider, Tabs, Timeline } from 'antd';
-import { InboxOutlined, CloudUploadOutlined, FileOutlined, FileImageOutlined, DeleteOutlined, UserOutlined, ClockCircleOutlined, SendOutlined, PaperClipOutlined, SaveOutlined } from '@ant-design/icons';
+import { InboxOutlined, CloudUploadOutlined, FileOutlined, FileImageOutlined, DeleteOutlined, UserOutlined, ClockCircleOutlined, SendOutlined, PaperClipOutlined, SaveOutlined, RollbackOutlined, CheckOutlined } from '@ant-design/icons';
 import type { Order, FileAttachment, User } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateOrder, getUsers, subscribeToLogs, addOrderLog, claimOrder } from '../../services/firebase';
 import { uploadFileToDropbox } from '../../services/dropbox';
 import { colors } from '../../theme/themeConfig';
 import { useUpload } from '../../contexts/UploadContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const { Dragger } = Upload;
 const { TextArea } = Input;
@@ -21,6 +22,7 @@ interface TaskDetailModalProps {
 
 const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel, onUpdate }) => {
     const { appUser } = useAuth();
+    const { t } = useLanguage();
     const [users, setUsers] = useState<User[]>([]);
     const [form] = Form.useForm();
     const [isUrgent, setIsUrgent] = useState(false);
@@ -259,7 +261,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                     {(isCS || isAdmin) ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', marginRight: 32 }}>
                             <span style={{ fontSize: 14, color: isUrgent ? colors.urgentRed : '#bfbfbf', fontWeight: isUrgent ? 'bold' : 'normal' }}>
-                                {isUrgent ? 'URGENT 🔥' : 'Normal'}
+                                {isUrgent ? t('taskDetail.header.urgent') : t('taskDetail.header.normal')}
                             </span>
                             <Form.Item name="isUrgent" valuePropName="checked" noStyle>
                                 <div onClick={() => handleUrgentToggle(!isUrgent)} style={{ cursor: 'pointer' }}>
@@ -270,7 +272,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                             </Form.Item>
                         </div>
                     ) : (
-                        isUrgent && <Tag color="red" style={{ marginLeft: 16 }}>URGENT 🔥</Tag>
+                        isUrgent && <Tag color="red" style={{ marginLeft: 16 }}>{t('taskDetail.header.urgent')}</Tag>
                     )}
                 </div>
             }
@@ -291,7 +293,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                             />
                         ) : (
                             <div style={{ height: 200, background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc' }}>
-                                No Mockup
+                                {t('taskDetail.mockup.noMockup')}
                             </div>
                         )}
                         <div style={{
@@ -299,7 +301,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                             background: 'rgba(0,0,0,0.5)', color: '#fff',
                             padding: '4px 12px', fontSize: 12, fontWeight: 500
                         }}>
-                            MOCKUP
+                            {t('taskDetail.mockup.title')}
                         </div>
                     </div>
 
@@ -307,7 +309,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                     <div style={{ background: '#fafafa', padding: 16, borderRadius: 12 }}>
                         <div style={{ fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                             <CloudUploadOutlined style={{ color: colors.primaryPink }} />
-                            File đính kèm({order?.customerFiles?.length || 0})
+                            {t('taskDetail.customerFiles.title')}({order?.customerFiles?.length || 0})
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto' }}>
                             {order?.customerFiles && order.customerFiles.length > 0 ? (
@@ -338,17 +340,17 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
 
                                             <div style={{ flex: 1, overflow: 'hidden' }}>
                                                 <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={file.name}>
-                                                    {file.name}
+                                                    <span style={{ color: '#999', marginRight: 4, fontWeight: 700 }}>#{idx + 1}</span> {file.name}
                                                 </div>
                                                 <a href={file.link} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: colors.primaryPink }}>
-                                                    Download / View
+                                                    {t('taskDetail.customerFiles.downloadView')}
                                                 </a>
                                             </div>
                                         </div>
                                     );
                                 })
                             ) : (
-                                <div style={{ color: '#ccc', fontStyle: 'italic', fontSize: 12 }}>Không có file đính kèm</div>
+                                <div style={{ color: '#ccc', fontStyle: 'italic', fontSize: 12 }}>{t('taskDetail.customerFiles.noFiles')}</div>
                             )}
                         </div>
                     </div>
@@ -362,18 +364,18 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                         items={[
                             {
                                 key: '1',
-                                label: <span><FileOutlined /> Chi tiết Task</span>,
+                                label: <span><FileOutlined /> {t('taskDetail.tabs.details')}</span>,
                                 children: (
                                     <>
                                         <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                             {(isAdmin || isDS) && (
                                                 <Tag color="purple" style={{ margin: 0 }}>
-                                                    Creator: <b>{getUserName(order?.createdBy)}</b>
+                                                    {t('taskDetail.info.creator')}: <b>{getUserName(order?.createdBy)}</b>
                                                 </Tag>
                                             )}
                                             {(isAdmin || isCS) && (
                                                 <Tag color="cyan" style={{ margin: 0 }}>
-                                                    Designer: <b>{getUserName(order?.designerId)}</b>
+                                                    {t('taskDetail.info.designer')}: <b>{getUserName(order?.designerId)}</b>
                                                 </Tag>
                                             )}
                                         </div>
@@ -392,26 +394,26 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                             boxShadow: '0 2px 8px rgba(235, 47, 150, 0.3)'
                                                         }}
                                                     >
-                                                        Cập nhật Task
+                                                        {t('taskDetail.info.update')}
                                                     </Button>
                                                 </div>
                                             )}
                                             <Row gutter={16}>
                                                 <Col span={24}>
-                                                    <Form.Item name="title" label="Title">
+                                                    <Form.Item name="title" label={t('taskDetail.form.title')}>
                                                         <Input style={{ fontWeight: 600 }} />
                                                     </Form.Item>
                                                 </Col>
                                             </Row>
                                             <Row gutter={16}>
                                                 <Col span={12}>
-                                                    <Form.Item name="sku" label="SKU">
+                                                    <Form.Item name="sku" label={t('taskDetail.form.sku')}>
                                                         <Input />
                                                     </Form.Item>
                                                 </Col>
                                                 {/* Removed Category, Quantity, Deadline */}
                                             </Row>
-                                            <Form.Item name="description" label="Description">
+                                            <Form.Item name="description" label={t('taskDetail.form.desc')}>
                                                 <TextArea rows={5} showCount maxLength={1000} style={{ resize: 'none' }} />
                                             </Form.Item>
                                         </Form>
@@ -427,30 +429,50 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                         }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                                                 <div style={{ fontWeight: 700, color: (canDSWork || designFiles.length > 0) ? '#389e0d' : '#8c8c8c', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                    <InboxOutlined /> DESIGN FILES
+                                                    <InboxOutlined /> {t('taskDetail.designFiles.title')}
                                                 </div>
-                                                {canClaim && (
-                                                    <Button type="primary" onClick={handleClaim} style={{ background: '#722ed1', borderColor: '#722ed1' }}>
-                                                        CLAIM
-                                                    </Button>
-                                                )}
-                                                {canReview && (
-                                                    <div style={{ display: 'flex', gap: 8 }}>
-                                                        <Button danger onClick={handleReject}>Reject</Button>
-                                                        <Button type="primary" onClick={handleApprove} style={{ background: '#52c41a', borderColor: '#52c41a' }}>Done</Button>
-                                                    </div>
-                                                )}
-                                                {canDSWork && (
-                                                    <Button
-                                                        type="primary"
-                                                        onClick={handleDSSubmit}
-                                                        style={{ background: colors.primaryPink, borderColor: colors.primaryPink, fontWeight: 600 }}
-                                                        disabled={stagedFiles.length === 0 && designFiles.length === 0}
-                                                        icon={<CloudUploadOutlined />}
-                                                    >
-                                                        Nộp bài
-                                                    </Button>
-                                                )}
+                                                <div style={{ display: 'flex', gap: 8 }}>
+                                                    {canClaim && (
+                                                        <Button
+                                                            type="primary"
+                                                            onClick={handleClaim}
+                                                            style={{ background: colors.primaryPink, borderColor: colors.primaryPink, fontWeight: 600 }}
+                                                            icon={<CloudUploadOutlined />}
+                                                        >
+                                                            {t('taskDetail.actions.claim')}
+                                                        </Button>
+                                                    )}
+                                                    {canReview && (
+                                                        <>
+                                                            <Button
+                                                                danger
+                                                                onClick={handleReject}
+                                                                icon={<RollbackOutlined />}
+                                                            >
+                                                                {t('taskDetail.actions.requestFix')}
+                                                            </Button>
+                                                            <Button
+                                                                type="primary"
+                                                                onClick={handleApprove}
+                                                                style={{ background: colors.successGreen, borderColor: colors.successGreen, fontWeight: 600 }}
+                                                                icon={<CheckOutlined />}
+                                                            >
+                                                                {t('taskDetail.actions.approve')}
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                    {canDSWork && (
+                                                        <Button
+                                                            type="primary"
+                                                            onClick={handleDSSubmit}
+                                                            style={{ background: colors.primaryPink, borderColor: colors.primaryPink, fontWeight: 600, boxShadow: '0 4px 14px rgba(235, 47, 150, 0.4)' }}
+                                                            disabled={stagedFiles.length === 0 && designFiles.length === 0}
+                                                            icon={<SendOutlined />}
+                                                        >
+                                                            {t('taskDetail.actions.submit')}
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             {canDSWork && (
@@ -463,7 +485,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                     <p className="ant-upload-drag-icon">
                                                         <CloudUploadOutlined style={{ color: colors.primaryPink }} />
                                                     </p>
-                                                    <p className="ant-upload-text" style={{ fontSize: 13 }}>Kéo thả hoặc click để chọn file (Chưa upload)</p>
+                                                    <p className="ant-upload-text" style={{ fontSize: 13 }}>{t('taskDetail.designFiles.dragDrop')}</p>
                                                 </Dragger>
                                             )}
 
@@ -495,7 +517,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
 
                                                                 <div style={{ flex: 1, overflow: 'hidden' }}>
                                                                     <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={file.name}>
-                                                                        {file.name}
+                                                                        <span style={{ color: '#999', marginRight: 4, fontWeight: 700 }}>#{idx + 1}</span> {file.name}
                                                                     </div>
                                                                     <div style={{ fontSize: 11, color: '#999' }}>
                                                                         {(file.size / 1024).toFixed(1)} KB
@@ -546,7 +568,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
 
                                                                 <div style={{ flex: 1, overflow: 'hidden' }}>
                                                                     <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={file.name}>
-                                                                        {file.name}
+                                                                        <span style={{ color: '#999', marginRight: 4, fontWeight: 700 }}>#{idx + 1}</span> {file.name}
+
                                                                     </div>
                                                                     <a href={file.link} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: colors.primaryPink }}>
                                                                         Download / View
@@ -627,7 +650,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                     }))}
                                                 />
                                             ) : (
-                                                <div style={{ color: '#ccc', textAlign: 'center', marginTop: 40 }}>Chưa có hoạt động nào</div>
+                                                <div style={{ color: '#ccc', textAlign: 'center', marginTop: 40 }}>{t('taskDetail.activities.empty')}</div>
                                             )}
                                         </div>
                                         <div style={{ paddingTop: 12, borderTop: '1px solid #eee' }}>
@@ -645,13 +668,13 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                     <Button icon={<PaperClipOutlined />} loading={commentUploading} />
                                                 </Upload>
                                                 <Input
-                                                    placeholder="Nhập trao đổi..."
+                                                    placeholder={t('taskDetail.activities.placeholder')}
                                                     value={comment}
                                                     onChange={e => setComment(e.target.value)}
                                                     onPressEnter={handleSendComment}
                                                 />
                                                 <Button type="primary" icon={<SendOutlined />} onClick={handleSendComment} loading={commentUploading} style={{ background: colors.primaryPink, borderColor: colors.primaryPink }}>
-                                                    Gửi
+                                                    {t('taskDetail.activities.send')}
                                                 </Button>
                                             </div>
                                         </div>
@@ -662,7 +685,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                     />
                 </Col>
             </Row>
-        </Modal>
+        </Modal >
     );
 };
 

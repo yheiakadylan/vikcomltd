@@ -3,6 +3,7 @@ import { Layout, Tabs, Empty, Spin, App, Pagination } from 'antd';
 import { AppstoreOutlined, BarsOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import type { Order, OrderStatus } from '../types';
 import { deleteOrder } from '../services/firebase';
 import { sortOrders } from '../utils/sortOrders';
@@ -24,6 +25,7 @@ const { Content } = Layout;
 const Dashboard: React.FC = () => {
     const { message } = App.useApp();
     const { appUser: user } = useAuth();
+    const { t } = useLanguage();
     const { status } = useParams<{ status: string }>();
     const navigate = useNavigate();
 
@@ -130,7 +132,7 @@ const Dashboard: React.FC = () => {
                 }, (error) => {
                     console.error("Error:", error);
                     setLoading(false);
-                    if (error?.code === 'permission-denied') message.error('Không có quyền truy cập.');
+                    if (error?.code === 'permission-denied') message.error(t('dashboard.messages.noPermission'));
                 }, constraints, pageSize, startAfterDoc);
             });
         });
@@ -151,20 +153,26 @@ const Dashboard: React.FC = () => {
     }, [orders]);
 
     // Actions
-    const handleOpenDetail = (order: Order) => { setSelectedOrder(order); setIsDetailModalOpen(true); };
-    const handleOpenGiveBack = (e: React.MouseEvent, order: Order) => { e.stopPropagation(); setSelectedOrder(order); setIsGiveBackModalOpen(true); };
-    const handleDelete = async (orderId: string) => {
+    const handleOpenDetail = React.useCallback((order: Order) => { setSelectedOrder(order); setIsDetailModalOpen(true); }, []);
+
+    const handleOpenGiveBack = React.useCallback((e: React.MouseEvent, order: Order) => {
+        e.stopPropagation();
+        setSelectedOrder(order);
+        setIsGiveBackModalOpen(true);
+    }, []);
+
+    const handleDelete = React.useCallback(async (orderId: string) => {
         try {
             await deleteOrder(orderId);
-            message.success('Đã xóa task.');
+            message.success(t('dashboard.messages.deleteSuccess'));
         } catch (error) {
-            message.error('Lỗi khi xóa task');
+            message.error(t('dashboard.messages.deleteError'));
         }
-    };
+    }, [message]);
 
     const renderTabContent = () => {
         if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Spin size="large" /></div>;
-        if (filteredOrders.length === 0) return <Empty description="Trống" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+        if (filteredOrders.length === 0) return <Empty description={t('dashboard.empty')} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
 
         if (viewMode === 'list') {
             return (
@@ -201,11 +209,11 @@ const Dashboard: React.FC = () => {
     };
 
     const tabItems = [
-        { key: 'new', label: 'New', children: null },
-        { key: 'doing', label: 'Doing', children: null },
-        { key: 'in_review', label: 'In Review', children: null },
-        { key: 'need_fix', label: 'Need Fix', children: null },
-        { key: 'done', label: 'Done', children: null },
+        { key: 'new', label: t('dashboard.tabs.new'), children: null },
+        { key: 'doing', label: t('dashboard.tabs.doing'), children: null },
+        { key: 'in_review', label: t('dashboard.tabs.in_review'), children: null },
+        { key: 'need_fix', label: t('dashboard.tabs.need_fix'), children: null },
+        { key: 'done', label: t('dashboard.tabs.done'), children: null },
     ];
     // Note: Children are handled by common renderTabContent, but Ant Tabs expects 'children' if using Items.
     // Actually we render content BELOW Tabs, not inside, to keep Pagination cleanly separate?
@@ -243,6 +251,7 @@ const Dashboard: React.FC = () => {
                                         setPage(1);
                                     }}
                                     style={{ width: 300 }}
+                                    placeholder={t('dashboard.searchPlaceholder')}
                                 />
                             }
                         />
@@ -265,7 +274,7 @@ const Dashboard: React.FC = () => {
                             onChange={handlePageChange}
                             showSizeChanger={false}
                             pageSizeOptions={['25']}
-                            showTotal={(total, range) => `${range[0]}-${range[1]} of ${total} items`}
+                            showTotal={(total, range) => `${range[0]}-${range[1]} ${t('dashboard.pagination.of')} ${total} ${t('dashboard.pagination.items')}`}
                             size="small"
                         />
                         <div style={{ display: 'flex', gap: 8, background: '#fff', padding: 4, borderRadius: 8, border: '1px solid #eee' }}>

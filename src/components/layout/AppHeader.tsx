@@ -3,10 +3,11 @@ import { Layout, Button, Avatar, Dropdown } from 'antd';
 import { PlusOutlined, UserOutlined, SettingOutlined, LogoutOutlined, SafetyCertificateOutlined, HomeOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import LanguageSwitcher from '../common/LanguageSwitcher';
 import UserProfileModal from '../modals/UserProfileModal';
 
 const { Header } = Layout;
-
 
 interface AppHeaderProps {
     onNewTask?: () => void;
@@ -16,6 +17,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const { appUser: user, logout } = useAuth();
+    const { t } = useLanguage();
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
     const isCS = user?.role === 'CS' || user?.role === 'ADMIN';
@@ -26,7 +28,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
         {
             key: 'profile',
             icon: <SettingOutlined />,
-            label: 'Thông tin cá nhân',
+            label: t('header.profile'),
             onClick: () => setIsProfileModalOpen(true),
         }
     ];
@@ -36,14 +38,14 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
             userMenuItems.push({
                 key: 'dashboard',
                 icon: <HomeOutlined />,
-                label: 'Về Dashboard',
+                label: t('header.dashboard'),
                 onClick: () => navigate('/'),
             });
         } else {
             userMenuItems.push({
                 key: 'admin',
                 icon: <SafetyCertificateOutlined />,
-                label: 'Trang Admin',
+                label: t('header.admin'),
                 onClick: () => navigate('/admin'),
             });
         }
@@ -54,7 +56,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
         {
             key: 'logout',
             icon: <LogoutOutlined />,
-            label: 'Đăng xuất',
+            label: t('header.logout'),
             danger: true,
             onClick: () => {
                 logout();
@@ -81,6 +83,9 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
             >
                 {/* Left Side: Logo + Search */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 0 }}>
+                    <div style={{ marginRight: 8 }}>
+                        <LanguageSwitcher />
+                    </div>
                 </div>
 
                 {/* Right Side: Action Buttons + User Menu */}
@@ -92,7 +97,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
                             onClick={onNewTask}
                             style={{ background: '#eb2f96', borderColor: '#eb2f96' }}
                         >
-                            Tạo Task
+                            {t('header.newTask')}
                         </Button>
                     )}
 
@@ -105,7 +110,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
                             <div style={{ lineHeight: 'normal', textAlign: 'right' }}>
                                 <div style={{ fontWeight: 600 }}>{user?.displayName}</div>
                                 <div style={{ fontSize: 10, color: '#8c8c8c' }}>
-                                    {user?.role === 'CS' ? 'Customer Service' : user?.role === 'DS' ? 'Designer' : 'Administrator'}
+                                    {user?.role === 'CS' ? t('header.role.cs') : user?.role === 'DS' ? t('header.role.ds') : t('header.role.admin')}
                                 </div>
                             </div>
                             <Avatar

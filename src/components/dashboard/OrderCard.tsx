@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, Image, Button, Popconfirm, Tag } from 'antd';
 import { CloudUploadOutlined, FireFilled, DeleteOutlined, RollbackOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useLanguage } from '../../contexts/LanguageContext';
 import type { Order } from '../../types';
 
 interface OrderCardProps {
@@ -23,6 +24,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
     onOpenGiveBack,
     onDelete
 }) => {
+    const { t } = useLanguage();
     const deadlineDisplay = order.deadline
         ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline).format('DD/MM')
         : null;
@@ -60,7 +62,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                             width="100%"
                             height="100%"
                             style={{ objectFit: 'cover' }}
-                            fallback="https://placehold.co/400x300/e6e6e6/a3a3a3?text=No+Image"
+                            fallback={`https://placehold.co/400x300/e6e6e6/a3a3a3?text=${t('dashboard.card.noImage')}`}
                         />
                     ) : (
                         <div className="text-gray-300"><CloudUploadOutlined style={{ fontSize: 32, color: '#ccc' }} /></div>
@@ -68,7 +70,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                     {isUrgent && <div style={{ position: 'absolute', top: 0, right: 0, background: '#f5222d', color: '#fff', fontSize: 12, fontWeight: 'bold', padding: '4px 8px', borderRadius: '0 0 0 8px' }}> 🔥</div>}
                     {isCS && (
                         <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }} onClick={e => e.stopPropagation()}>
-                            <Popconfirm title="Xóa task?" onConfirm={() => onDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText="Xóa" cancelText="Hủy">
+                            <Popconfirm title={t('dashboard.card.confirmDelete')} onConfirm={() => onDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText={t('common.delete')} cancelText={t('common.cancel')}>
                                 <Button shape="circle" size="small" danger icon={<DeleteOutlined />} style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} />
                             </Popconfirm>
                         </div>
@@ -76,7 +78,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                 </div>
             }
             actions={[
-                (isDS && order.status === 'doing') ? <Button type="text" danger icon={<RollbackOutlined />} onClick={(e) => onOpenGiveBack(e, order)}>Trả đơn</Button> : null,
+                (isDS && order.status === 'doing') ? <Button type="text" danger icon={<RollbackOutlined />} onClick={(e) => onOpenGiveBack(e, order)}>{t('dashboard.card.giveBack')}</Button> : null,
             ].filter(Boolean) as React.ReactNode[]}
         >
             <Card.Meta
@@ -119,7 +121,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                                 {deadlineDisplay}
                             </Tag>
                         ) : <span />}
-                        {order.sku && <Tag color="blue" style={{ margin: 0, border: 'none', background: '#e6f7ff', color: '#1890ff' }}>{order.sku}</Tag>}
+                        {order.sku && <Tag color="blue" style={{ margin: 0, border: 'none', background: '#e6f7ff', color: '#1890ff' }}>SKU: {order.sku}</Tag>}
                     </div>
                 }
             />
@@ -127,4 +129,4 @@ const OrderCard: React.FC<OrderCardProps> = ({
     );
 };
 
-export default OrderCard;
+export default React.memo(OrderCard);

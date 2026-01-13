@@ -2,6 +2,7 @@ import React from 'react';
 import { Button, Popconfirm, Tag, Image } from 'antd';
 import { CloudUploadOutlined, FireFilled, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useLanguage } from '../../contexts/LanguageContext';
 import type { Order } from '../../types';
 
 interface OrderRowProps {
@@ -19,6 +20,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
     onOpenDetail,
     onDelete
 }) => {
+    const { t } = useLanguage();
     const deadlineDisplay = order.deadline
         ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline).format('DD/MM')
         : null;
@@ -38,7 +40,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                         width="100%"
                         height="100%"
                         style={{ objectFit: 'cover' }}
-                        fallback="https://placehold.co/80x80/e6e6e6/a3a3a3?text=Img"
+                        fallback={`https://placehold.co/80x80/e6e6e6/a3a3a3?text=${t('dashboard.card.imageText')}`}
                     />
                 ) : (
                     <div style={{ width: '100%', height: '100%', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -64,15 +66,15 @@ const OrderRow: React.FC<OrderRowProps> = ({
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
                     {deadlineDisplay && <Tag color={isUrgent ? 'red' : 'default'} style={{ margin: 0 }}>{deadlineDisplay}</Tag>}
-                    {order.sku && <Tag color="blue" style={{ margin: 0 }}>{order.sku}</Tag>}
+                    {order.sku && <Tag color="blue" style={{ margin: 0 }}>SKU: {order.sku}</Tag>}
                     <span style={{ fontSize: 13, color: '#666', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {order.description || 'No desc'}
+                        {order.description || t('dashboard.card.noDesc')}
                     </span>
                 </div>
             </div>
             {isCS && (
                 <div style={{ display: 'flex', alignItems: 'center', paddingLeft: 12 }}>
-                    <Popconfirm title="Xóa?" onConfirm={() => onDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText="Xóa" cancelText="Hủy">
+                    <Popconfirm title={t('dashboard.card.confirmDelete')} onConfirm={() => onDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText={t('common.delete')} cancelText={t('common.cancel')}>
                         <Button type="text" danger icon={<DeleteOutlined />} onClick={e => e.stopPropagation()} />
                     </Popconfirm>
                 </div>
@@ -81,4 +83,4 @@ const OrderRow: React.FC<OrderRowProps> = ({
     );
 };
 
-export default OrderRow;
+export default React.memo(OrderRow);

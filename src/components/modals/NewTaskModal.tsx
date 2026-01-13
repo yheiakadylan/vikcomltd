@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { doc, setDoc, collection } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useUpload } from '../../contexts/UploadContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import dayjs from 'dayjs';
 import ImagePreview from '../common/ImagePreview';
 
@@ -29,6 +30,7 @@ interface CustomFile {
 const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }) => {
     const [form] = Form.useForm();
     const { appUser: user } = useAuth();
+    const { t } = useLanguage();
     const [loading, setLoading] = useState(false);
     const [isUrgent, setIsUrgent] = useState(false);
 
@@ -181,7 +183,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
 
     return (
         <Modal
-            title={<span style={{ color: colors.primaryPink, fontSize: 20, fontWeight: 700 }}>Create New Task</span>}
+            title={<span style={{ color: colors.primaryPink, fontSize: 20, fontWeight: 700 }}>{t('newTask.title')}</span>}
             open={open}
             onCancel={onCancel}
             footer={null}
@@ -191,7 +193,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
             className="pinky-modal"
         >
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <span style={{ marginRight: 8, fontWeight: 500, color: isUrgent ? colors.urgentRed : '#8c8c8c' }}>Urgent?</span>
+                <span style={{ marginRight: 8, fontWeight: 500, color: isUrgent ? colors.urgentRed : '#8c8c8c' }}>{t('newTask.urgentQuestion')}</span>
                 <Switch
                     checked={isUrgent}
                     onChange={setIsUrgent}
@@ -209,7 +211,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                 <Row gutter={24}>
                     <Col span={10}>
                         {/* MOCKUP IMAGE (Required) */}
-                        <Form.Item label={<span style={{ fontWeight: 600 }}>Ảnh Mockup (Bắt buộc)</span>}>
+                        <Form.Item label={<span style={{ fontWeight: 600 }}>{t('newTask.form.mockup')}</span>}>
                             <div className="mockup-uploader" style={{
                                 width: '100%',
                                 aspectRatio: '1/1',
@@ -300,20 +302,20 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                         </Form.Item>
                     </Col>
                     <Col span={14}>
-                        <Form.Item name="readableId" label="Order ID" rules={[{ required: true, message: 'Vui lòng nhập Order ID' }]}>
-                            <Input placeholder="Nhập Order ID..." size="large" style={{ borderRadius: 8 }} />
+                        <Form.Item name="readableId" label={t('newTask.form.orderId')} rules={[{ required: true, message: 'Vui lòng nhập Order ID' }]}>
+                            <Input placeholder={t('newTask.form.orderId')} size="large" style={{ borderRadius: 8 }} />
                         </Form.Item>
 
-                        <Form.Item name="title" label="Title">
-                            <Input placeholder="Tên sản phẩm (Tùy chọn)..." style={{ borderRadius: 8 }} />
+                        <Form.Item name="title" label={t('newTask.form.taskId')}>
+                            <Input placeholder={t('newTask.form.taskId')} style={{ borderRadius: 8 }} />
                         </Form.Item>
 
-                        <Form.Item name="sku" label="SKU">
-                            <Input placeholder="Mã SKU (nếu có)" style={{ borderRadius: 8 }} />
+                        <Form.Item name="sku" label={t('newTask.form.sku')}>
+                            <Input placeholder={t('newTask.form.sku')} style={{ borderRadius: 8 }} />
                         </Form.Item>
 
-                        <Form.Item name="description" label="Description">
-                            <TextArea rows={4} placeholder="Mô tả chi tiết yêu cầu..." style={{ borderRadius: 8 }} />
+                        <Form.Item name="description" label={t('newTask.form.desc')}>
+                            <TextArea rows={4} placeholder={t('newTask.form.desc')} style={{ borderRadius: 8 }} />
                         </Form.Item>
                     </Col>
                 </Row>
@@ -321,7 +323,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                 <div style={{ margin: '24px 0', height: 1, background: '#f0f0f0' }} />
 
                 {/* CUSTOMER FILES (Optional) */}
-                <Form.Item label={<span style={{ fontWeight: 600 }}>Ảnh khách gửi (Tùy chọn)</span>}>
+                <Form.Item label={<span style={{ fontWeight: 600 }}>{t('newTask.form.customerFiles')}</span>}>
                     <div
                         style={{
                             border: `2px dashed ${customerFiles.length > 0 ? colors.primaryPink : '#d9d9d9'}`,
@@ -357,8 +359,8 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                         }}
                     >
                         <CloudUploadOutlined style={{ fontSize: 48, color: colors.primaryPink, marginBottom: 16 }} />
-                        <div style={{ fontSize: 16, fontWeight: 500 }}>Click hoặc Kéo thả nhiều ảnh vào đây</div>
-                        <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>File sẽ chờ upload khi bấm "Tạo Task"</div>
+                        <div style={{ fontSize: 16, fontWeight: 500 }}>{t('newTask.form.clickToUpload')}</div>
+                        <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>{t('newTask.form.waitingUpload')}</div>
                         <input
                             type="file"
                             id="customer-input"
@@ -373,14 +375,14 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                     {customerFiles.length > 0 && (
                         <>
                             <div style={{ fontSize: 13, fontWeight: 600, color: '#fa8c16', marginBottom: 12 }}>
-                                File chờ upload ({customerFiles.length})
+                                {t('newTask.form.staged')} ({customerFiles.length})
                             </div>
                             <div style={{
                                 display: 'grid',
                                 gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
                                 gap: 16
                             }}>
-                                {customerFiles.map((file) => (
+                                {customerFiles.map((file, index) => (
                                     <div key={file.uid} style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -412,6 +414,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                                                     const lastDot = originalName.lastIndexOf('.');
                                                     return lastDot !== -1 ? originalName.substring(lastDot) : '';
                                                 })()}</span>}
+                                                prefix={<span style={{ color: '#999', marginRight: 4, fontWeight: 700 }}>#{index + 1}</span>}
                                             />
                                             <div style={{ fontSize: 11, color: '#8c8c8c' }}>{(file.size / 1024 / 1024).toFixed(2)} MB</div>
                                         </div>
@@ -432,7 +435,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                 </Form.Item>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 32, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
-                    <Button onClick={onCancel} size="large" style={{ borderRadius: 8 }}>Hủy bỏ</Button>
+                    <Button onClick={onCancel} size="large" style={{ borderRadius: 8 }}>{t('common.cancel')}</Button>
                     <Button
                         type="primary"
                         htmlType="submit"
@@ -448,7 +451,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                             boxShadow: '0 2px 0 rgba(235, 47, 150, 0.2)'
                         }}
                     >
-                        Tạo Task
+                        {t('newTask.form.submit')}
                     </Button>
                 </div>
             </Form>

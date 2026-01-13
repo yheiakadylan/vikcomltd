@@ -4,109 +4,108 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================================
-    // 1. CÁC HÀM TIỆN ÍCH (HELPER FUNCTIONS)
+    // 1. HELPER FUNCTIONS
     // =========================================================
 
-    // Kiểm tra đã đăng nhập chưa
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Lấy thông tin user hiện tại từ DB
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Kiểm tra Role (Giúp code gọn hơn)
-    function isRole(role) {
-      return isSignedIn() && getUserData().role == role;
+    function getRole() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) 
+        ? getUserData().role 
+        : null;
     }
 
-    function isAdmin() { return isRole('ADMIN'); }
-    function isCS() { return isRole('CS'); }
-    function isDS() { return isRole('DS'); }
+    function isAdmin() { 
+      return isSignedIn() && getRole() == 'ADMIN'; 
+    }
     
-    // Admin hoặc CS (Nhóm quản lý)
+    function isCS() { 
+      return isSignedIn() && getRole() == 'CS'; 
+    }
+    
+    function isDS() { 
+      return isSignedIn() && getRole() == 'DS'; 
+    }
+    
     function isManager() {
       return isAdmin() || isCS();
     }
 
-    // Kiểm tra xem user có phải là người đang làm đơn này không
     function isMyTask(resourceData) {
       return resourceData.designerId == request.auth.uid;
     }
 
-    // Kiểm tra các trường bị thay đổi (QUAN TRỌNG: Chống sửa đề bài)
     function onlyUpdating(allowedFields) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedFields);
     }
 
     // =========================================================
-    // 2. RULES CHO COLLECTION 'users'
+    // 2. USERS COLLECTION
     // =========================================================
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create, update: if isAdmin() || request.auth.uid == userId;
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isAdmin() || request.auth.uid == userId;
       allow delete: if isAdmin();
     }
 
     // =========================================================
-    // 3. RULES CHO COLLECTION 'tasks' (ĐÃ ĐỔI TÊN TỪ ORDERS)
+    // 3. TASKS COLLECTION (MAIN COLLECTION)
     // =========================================================
     match /tasks/{taskId} {
 
-      // --- QUYỀN ĐỌC (READ) ---
-      // Quản lý xem hết. 
-      // DS xem đơn mới (để nhận) HOẶC đơn của chính mình đang làm/sửa.
-      allow read: if isManager() || 
-                  (isDS() && (resource.data.status == 'new' || isMyTask(resource.data)));
-
-      // --- QUYỀN TẠO (CREATE) ---
-      // Chỉ quản lý được tạo đơn.
-      // Validate dữ liệu đầu vào cơ bản.
-      allow create: if isManager() && 
-                    request.resource.data.status == 'new' &&
-                    request.resource.data.title.size() > 0;
-
-      // --- QUYỀN SỬA (UPDATE) ---
-      
-      // 1. Quản lý (CS/Admin): Sửa được mọi thứ.
-      allow update: if isManager();
-
-      // 2. Designer (DS): Sửa có điều kiện cực chặt
-      allow update: if isDS() && (
-        
-        // KỊCH BẢN A: CLAIM (Nhận việc)
-        // Yêu cầu: status 'new' -> 'doing', gán uid cho mình
-        (resource.data.status == 'new' && 
-         request.resource.data.status == 'doing' &&
-         request.resource.data.designerId == request.auth.uid &&
-         onlyUpdating(['status', 'designerId', 'updatedAt']))
-        
-        || 
-
-        // KỊCH BẢN B: SUBMIT (Nộp bài) hoặc RE-SUBMIT (Sửa lỗi)
-        // Yêu cầu: status 'doing'/'need_fix' -> 'in_review', chỉ sửa designFiles
-        ((resource.data.status == 'doing' || resource.data.status == 'need_fix') &&
-         request.resource.data.status == 'in_review' &&
-         isMyTask(resource.data) &&
-         onlyUpdating(['status', 'designFiles', 'updatedAt']))
-
-        ||
-
-        // KỊCH BẢN C: GIVE BACK (Trả đơn)
-        // Yêu cầu: status 'doing' -> 'new', hủy gán uid
-        (resource.data.status == 'doing' &&
-         request.resource.data.status == 'new' &&
-         isMyTask(resource.data) &&
-         request.resource.data.designerId == null &&
-         onlyUpdating(['status', 'designerId', 'updatedAt']))
+      // --- READ ---
+      allow read: if isSignedIn() && (
+        isManager() || 
+        (isDS() && (resource.data.status == 'new' || isMyTask(resource.data)))
       );
 
-      // --- QUYỀN XÓA (DELETE) ---
-      // Chỉ Admin được xóa.
-      allow delete: if isAdmin() || isCS();
-      // Subcollection LOGS
+      // --- CREATE ---
+      // Allow CS/ADMIN to create.
+      allow create: if isSignedIn() && isManager();
+
+      // --- UPDATE ---
+      
+      // Managers can update anything
+      allow update: if isSignedIn() && isManager();
+
+      // Upload Context: Allow Managers OR Owner to update files
+      allow update: if isSignedIn() && 
+        (isManager() || isMyTask(resource.data)) &&
+        onlyUpdating(['mockupUrl', 'customerFiles', 'designFiles', 'updatedAt']);
+
+      // DS: Claim task
+      allow update: if isSignedIn() && isDS() && 
+        resource.data.status == 'new' && 
+        request.resource.data.status == 'doing' &&
+        request.resource.data.designerId == request.auth.uid &&
+        onlyUpdating(['status', 'designerId', 'updatedAt']);
+      
+      // DS: Submit work
+      allow update: if isSignedIn() && isDS() && 
+        (resource.data.status == 'doing' || resource.data.status == 'need_fix') &&
+        request.resource.data.status == 'in_review' &&
+        isMyTask(resource.data) &&
+        onlyUpdating(['status', 'designFiles', 'updatedAt']);
+
+      // DS: Give back task
+      allow update: if isSignedIn() && isDS() && 
+        resource.data.status == 'doing' &&
+        request.resource.data.status == 'new' &&
+        isMyTask(resource.data) &&
+        request.resource.data.designerId == null &&
+        onlyUpdating(['status', 'designerId', 'updatedAt']);
+
+      // --- DELETE ---
+      allow delete: if isSignedIn() && isManager();
+
+      // --- LOGS SUBCOLLECTION ---
       match /logs/{logId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn();
@@ -114,7 +113,7 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // 4. RULES CHO LOGS (LỊCH SỬ)
+    // 4. LOGS COLLECTION (GLOBAL)
     // =========================================================
     match /logs/{logId} {
       allow read: if isSignedIn();
@@ -123,10 +122,16 @@ service cloud.firestore {
     }
     
     // =========================================================
-    // 5. RULES CHO CẤU HÌNH HỆ THỐNG (SETTINGS)
+    // 5. SETTINGS COLLECTION
     // =========================================================
     match /settings/{docId} {
-      allow read, write: if isAdmin();
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        // Allow any user to update dropbox token (for auto-refresh)
+        (docId == 'system' && onlyUpdating(['dropbox']))
+      );
     }
   }
 }
