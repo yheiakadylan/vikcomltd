@@ -91,9 +91,10 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
             message.loading({ content: 'Đang tìm thông tin đơn hàng...', key: 'fetchOrder', duration: 0 }); // Indefinite loading
 
             try {
-                // Encode the ID to prevent URL injection
                 const encodedId = encodeURIComponent(cleanId);
-                const res = await fetch(`https://dashboardvikcom.vercel.app/api/lark-events?action=get-order-detail&secret=test1234&orderId=${encodedId}`);
+                const apiUrl = import.meta.env.VITE_LARK_API_URL;
+                const apiSecret = import.meta.env.VITE_LARK_API_SECRET;
+                const res = await fetch(`${apiUrl}?action=get-order-detail&secret=${apiSecret}&orderId=${encodedId}`);
 
                 if (res.ok) {
                     const data: LarkOrder = await res.json();

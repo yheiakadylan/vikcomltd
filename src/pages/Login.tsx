@@ -38,7 +38,7 @@ const Login: React.FC = () => {
             <Content style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
                 <div style={{ marginBottom: 32, textAlign: 'center' }}>
                     {/* Logo Placeholder */}
-                    <Title level={2} style={{ color: colors.primaryPink, margin: 0 }}>Pink POD System</Title>
+                    <Title level={2} style={{ color: colors.primaryPink, margin: 0 }}></Title>
                 </div>
                 <Card style={{ width: 400, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                     <Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>Đăng nhập</Title>

@@ -7,13 +7,14 @@ import type { Order, User } from '../types';
 
 // Firebase configuration - uses VITE_ prefix for client-side access
 const firebaseConfig = {
-    apiKey: "AIzaSyCMfkDrGBzVa2ungr5iX8VDNpfdssw1RhA",
-    authDomain: "servertest-25b17.firebaseapp.com",
-    projectId: "servertest-25b17",
-    storageBucket: "servertest-25b17.firebasestorage.app",
-    messagingSenderId: "1056476786050",
-    appId: "1:1056476786050:web:e60baea741d839de3ab39b"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
+
 
 const app = initializeApp(firebaseConfig);
 
