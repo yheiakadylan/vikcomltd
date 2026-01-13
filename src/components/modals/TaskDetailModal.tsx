@@ -599,7 +599,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                             },
                             {
                                 key: '2',
-                                label: <span><ClockCircleOutlined /> Hoạt động ({logs.length})</span>,
+                                label: <span><ClockCircleOutlined /> {t('taskDetail.tabs.activities')} ({logs.length})</span>,
                                 children: (
                                     <div style={{ height: 600, display: 'flex', flexDirection: 'column' }}>
                                         <div style={{ flex: 1, overflowY: 'auto', paddingRight: 12, paddingBottom: 16 }}>

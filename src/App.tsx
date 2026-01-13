@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
 import AuthCallback from './pages/AuthCallback';
+import NotFound from './pages/NotFound';
 import { Spin, App as AntdApp } from 'antd';
 import { UploadProvider } from './contexts/UploadContext';
 import { LanguageProvider } from './contexts/LanguageContext';
@@ -53,6 +54,9 @@ const AppRoutes = () => {
             <Admin />
           </ProtectedRoute>
         } />
+
+        {/* 404 Page */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </>
   );
