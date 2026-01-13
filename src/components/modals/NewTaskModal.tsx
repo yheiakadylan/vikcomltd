@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, Button, Switch, Row, Col, message, Tooltip } from 'antd';
-import { UploadOutlined, FireOutlined, DeleteOutlined, EyeOutlined, CloudUploadOutlined, PictureOutlined } from '@ant-design/icons';
+import { useDebounce } from '../../utils/useDebounce';
+import { Modal, Form, Input, Button, Switch, Row, Col, message, Tooltip, Table, Tag, Popconfirm, Avatar, Spin } from 'antd';
+import { UploadOutlined, FireOutlined, DeleteOutlined, EyeOutlined, CloudUploadOutlined, PictureOutlined, SyncOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { colors } from '../../theme/themeConfig';
 import type { Order } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -27,12 +28,36 @@ interface CustomFile {
     size: number;
 }
 
+interface LarkItem {
+    name: string;
+    variant: string;
+    quantity: number;
+    price: number;
+    transactionId: string;
+    image: string;
+}
+
+interface LarkOrder {
+    firstName: string;
+    lastName: string;
+    items: LarkItem[];
+}
+
 const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }) => {
     const [form] = Form.useForm();
     const { appUser: user } = useAuth();
     const { t } = useLanguage();
     const [loading, setLoading] = useState(false);
     const [isUrgent, setIsUrgent] = useState(false);
+
+    // Auto-Fill States
+    const [itemsModalOpen, setItemsModalOpen] = useState(false);
+    const [fetchedOrder, setFetchedOrder] = useState<LarkOrder | null>(null);
+    const [fetching, setFetching] = useState(false);
+    const [autoFillVisible, setAutoFillVisible] = useState(false); // To show small popup for single item
+
+    const [orderIdInput, setOrderIdInput] = useState('');
+    const debouncedOrderId = useDebounce(orderIdInput, 800);
 
     // File States
     const [mockupFile, setMockupFile] = useState<CustomFile | null>(null);
@@ -49,8 +74,110 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
             setMockupFile(null);
             setCustomerFiles([]);
             setIsUrgent(false);
+            setFetchedOrder(null);
+            setOrderIdInput('');
+            setAutoFillVisible(false);
         }
     }, [open, form]);
+
+    // Fetch Order Data Effect
+    useEffect(() => {
+        // Sanitize check: Ensure numeric/clean ID and sufficient length
+        const cleanId = debouncedOrderId.trim();
+        if (!cleanId || cleanId.length < 5) return;
+
+        const fetchOrder = async () => {
+            setFetching(true);
+            message.loading({ content: 'Đang tìm thông tin đơn hàng...', key: 'fetchOrder', duration: 0 }); // Indefinite loading
+
+            try {
+                // Encode the ID to prevent URL injection
+                const encodedId = encodeURIComponent(cleanId);
+                const res = await fetch(`http://localhost:3001/api/lark-events?action=get-order-detail&secret=test1234&orderId=${encodedId}`);
+
+                if (res.ok) {
+                    const data: LarkOrder = await res.json();
+                    if (data && data.items && data.items.length > 0) {
+                        setFetchedOrder(data);
+                        message.success({ content: t('autoFill.found'), key: 'fetchOrder' });
+
+                        if (data.items.length === 1) {
+                            setAutoFillVisible(true);
+                        } else {
+                            setItemsModalOpen(true);
+                        }
+                    } else {
+                        setFetchedOrder(null);
+                        message.info({ content: 'Không tìm thấy đơn hàng', key: 'fetchOrder' });
+                    }
+                } else {
+                    message.error({ content: 'Lỗi kết nối server', key: 'fetchOrder' });
+                }
+            } catch (error) {
+                console.error("Fetch order error", error);
+                message.destroy('fetchOrder'); // Silent fail or cleanup
+            } finally {
+                setFetching(false);
+            }
+        };
+
+        fetchOrder();
+    }, [debouncedOrderId, t]);
+
+    const fillFormData = async (item: LarkItem) => {
+        setFetching(true);
+        try {
+            form.setFieldsValue({
+                title: item.name,
+                description: item.variant
+            });
+
+            if (item.image) {
+                // Try to download image using CORS Proxy
+                try {
+                    console.log('Fetching image via proxy:', item.image);
+                    const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(item.image)}&output=jpg`;
+                    const response = await fetch(proxyUrl);
+
+                    if (!response.ok) throw new Error('Proxy fetch failed');
+
+                    const blob = await response.blob();
+                    const fileName = `mockup_${Date.now()}.jpg`;
+                    const file = new File([blob], fileName, { type: 'image/jpeg' });
+
+                    setMockupFile({
+                        uid: 'mockup-auto-' + Date.now(),
+                        file,
+                        name: fileName,
+                        preview: URL.createObjectURL(file),
+                        size: file.size
+                    });
+                    message.success(t('autoFill.fillSuccess'));
+                } catch (imgErr) {
+                    console.error("Could not fetch image for auto-fill", imgErr);
+                    // Fallback: Just warn, data is already filled
+                    message.warning(t('autoFill.imageError'));
+                }
+            } else {
+                message.success(t('autoFill.fillSuccess'));
+            }
+
+            setItemsModalOpen(false);
+            setAutoFillVisible(false);
+        } catch (err) {
+            console.error(err);
+            message.error(t('autoFill.fetchError'));
+        } finally {
+            setFetching(false);
+        }
+    };
+
+    const handleOrderIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        // Simple sanitization: remove non-printable characters or excessive length if needed
+        // For now, just direct input
+        setOrderIdInput(e.target.value);
+        if (autoFillVisible) setAutoFillVisible(false);
+    };
 
     const { enqueue, registerCompletionAction } = useUpload();
 
@@ -303,7 +430,53 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                     </Col>
                     <Col span={14}>
                         <Form.Item name="readableId" label={t('newTask.form.orderId')} rules={[{ required: true, message: 'Vui lòng nhập Order ID' }]}>
-                            <Input placeholder={t('newTask.form.orderId')} size="large" style={{ borderRadius: 8 }} />
+                            <div style={{ position: 'relative' }}>
+                                <Input
+                                    placeholder={t('newTask.form.orderId')}
+                                    size="large"
+                                    style={{ borderRadius: 8 }}
+                                    value={orderIdInput}
+                                    onChange={handleOrderIdChange}
+                                    suffix={
+                                        <div style={{ width: 20, display: 'flex', justifyContent: 'center' }}>
+                                            {fetching && <SyncOutlined spin style={{ color: colors.primaryPink }} />}
+                                            {!fetching && fetchedOrder && <CheckCircleOutlined style={{ color: '#52c41a' }} />}
+                                        </div>
+                                    }
+                                />
+                                {autoFillVisible && fetchedOrder?.items?.length === 1 && (
+                                    <div style={{
+                                        position: 'absolute', top: '100%', left: 0, zIndex: 10,
+                                        marginTop: 8, background: '#fff',
+                                        padding: '8px 12px', borderRadius: 8,
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                        border: '1px solid #f0f0f0',
+                                        display: 'flex', alignItems: 'center', gap: 8,
+                                        width: '100%'
+                                    }}>
+                                        <div style={{ flex: 1, fontSize: 13 }}>
+                                            <span style={{ fontWeight: 600 }}>{fetchedOrder.firstName} {fetchedOrder.lastName}</span>:
+                                            <span style={{ color: '#8c8c8c', marginLeft: 4 }}>{fetchedOrder.items[0].name.substring(0, 30)}...</span>
+                                        </div>
+                                        <Button
+                                            type="primary"
+                                            size="small"
+                                            onClick={() => fillFormData(fetchedOrder.items[0])}
+                                            loading={fetching}
+                                            style={{ background: colors.primaryPink, borderColor: colors.primaryPink }}
+                                        >
+                                            Fill Data
+                                        </Button>
+                                    </div>
+                                )}
+                                {fetchedOrder && fetchedOrder.items.length > 1 && (
+                                    <div style={{ marginTop: 4, textAlign: 'right' }}>
+                                        <Button type="link" size="small" onClick={() => setItemsModalOpen(true)}>
+                                            {t('autoFill.found')} ({fetchedOrder.items.length} items) - Click to Select
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
                         </Form.Item>
 
                         <Form.Item name="title" label={t('newTask.form.taskId')}>
@@ -460,7 +633,57 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                 visible={previewVisible}
                 onClose={() => setPreviewVisible(false)}
             />
-        </Modal>
+
+            <Modal
+                title={t('autoFill.selectItem')}
+                open={itemsModalOpen}
+                onCancel={() => setItemsModalOpen(false)}
+                footer={null}
+                width={700}
+            >
+                {fetchedOrder && (
+                    <Table
+                        dataSource={fetchedOrder.items}
+                        rowKey="transactionId"
+                        pagination={false}
+                        columns={[
+                            {
+                                title: 'Image',
+                                dataIndex: 'image',
+                                width: 80,
+                                render: (src) => <Avatar src={src} shape="square" size={64} />
+                            },
+                            {
+                                title: 'Item Details',
+                                dataIndex: 'name',
+                                render: (text, record) => (
+                                    <div>
+                                        <div style={{ fontWeight: 600, marginBottom: 4 }}>{text}</div>
+                                        <div style={{ fontSize: 12, color: '#666', whiteSpace: 'pre-wrap' }}>{record.variant}</div>
+                                        <Tag color="blue" style={{ marginTop: 4 }}>Qty: {record.quantity}</Tag>
+                                        <Tag color="green">Transaction: {record.transactionId}</Tag>
+                                    </div>
+                                )
+                            },
+                            {
+                                title: 'Action',
+                                width: 100,
+                                render: (_, record) => (
+                                    <Button
+                                        type="primary"
+                                        size="small"
+                                        onClick={() => fillFormData(record)}
+                                        loading={fetching}
+                                    >
+                                        Select
+                                    </Button>
+                                )
+                            }
+                        ]}
+                    />
+                )}
+            </Modal>
+        </Modal >
     );
 };
 

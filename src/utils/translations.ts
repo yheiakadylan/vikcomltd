@@ -146,6 +146,15 @@ export const translations = {
                 uploading: 'Uploading',
                 completed: 'Upload Complete'
             }
+        },
+        autoFill: {
+            found: 'Found order data.',
+            confirmFill: 'Auto-fill data?',
+            selectItem: 'Select an item to fill',
+            fillSuccess: 'Data auto-filled!',
+            fetchError: 'Could not fetch order data',
+            imageError: 'Could not auto-download Mockup (CORS blocked). Please upload manually.',
+            filling: 'Auto-filling...'
         }
     },
     vi: {
@@ -295,6 +304,15 @@ export const translations = {
                 uploading: 'Đang tải',
                 completed: 'Đã xong'
             }
+        },
+        autoFill: {
+            found: 'Tìm thấy dữ liệu đơn hàng.',
+            confirmFill: 'Tự động điền dữ liệu?',
+            selectItem: 'Chọn sản phẩm để điền',
+            fillSuccess: 'Đã điền dữ liệu!',
+            fetchError: 'Không thể lấy dữ liệu đơn hàng',
+            imageError: 'Không thể tải ảnh Mockup (bị chặn). Vui lòng tải thủ công.',
+            filling: 'Đang điền...'
         }
     }
 };
