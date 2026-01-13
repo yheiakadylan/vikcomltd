@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDebounce } from '../../utils/useDebounce';
-import { Modal, Form, Input, Button, Switch, Row, Col, message, Tooltip, Table, Tag, Popconfirm, Avatar, Spin } from 'antd';
+import { Modal, Form, Input, Button, Switch, Row, Col, message, Tooltip, Table, Tag, Avatar } from 'antd';
 import { UploadOutlined, FireOutlined, DeleteOutlined, EyeOutlined, CloudUploadOutlined, PictureOutlined, SyncOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { colors } from '../../theme/themeConfig';
 import type { Order } from '../../types';
@@ -93,7 +93,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
             try {
                 // Encode the ID to prevent URL injection
                 const encodedId = encodeURIComponent(cleanId);
-                const res = await fetch(`http://localhost:3001/api/lark-events?action=get-order-detail&secret=test1234&orderId=${encodedId}`);
+                const res = await fetch(`https://dashboardvikcom.vercel.app/api/lark-events?action=get-order-detail&secret=test1234&orderId=${encodedId}`);
 
                 if (res.ok) {
                     const data: LarkOrder = await res.json();
