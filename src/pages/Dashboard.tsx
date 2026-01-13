@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Tabs, Button, Card, Tag, Empty, Spin, App, Popconfirm, Image, Pagination } from 'antd';
-import { FireFilled, ClockCircleOutlined, CloudUploadOutlined, RollbackOutlined, DeleteOutlined, AppstoreOutlined, BarsOutlined } from '@ant-design/icons';
+import { Layout, Tabs, Empty, Spin, App, Pagination } from 'antd';
+import { AppstoreOutlined, BarsOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import type { Order, OrderStatus } from '../types';
@@ -12,7 +12,12 @@ import RejectModal from '../components/modals/RejectModal';
 import GiveBackModal from '../components/modals/GiveBackModal';
 import AppHeader from '../components/layout/AppHeader';
 import SearchInput from '../components/common/SearchInput';
-import dayjs from 'dayjs';
+import OrderCard from '../components/dashboard/OrderCard';
+import OrderRow from '../components/dashboard/OrderRow';
+// Remove dayjs as it is likely not used directly in this file anymore, or keep if needed.
+// Checked usage: not used directly except in imports potentially? Wait, let's keep it safe or remove if unused.
+// It WAS used in renderOrderCard. Now those are gone.
+// Let's remove dayjs import from here.
 
 const { Content } = Layout;
 
@@ -35,6 +40,7 @@ const Dashboard: React.FC = () => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchText, setSearchText] = useState('');
+    const [executedSearchTerm, setExecutedSearchTerm] = useState('');
 
     // View Mode State
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -53,9 +59,19 @@ const Dashboard: React.FC = () => {
     useEffect(() => {
         setPage(1);
         pageCursors.current.clear();
+        // Don't reset executedSearchTerm here usually, but if tab changes, maybe we should?
+        // Let's keep search term active even on tab change? Or clear it?
+        // Usually tabs filtered by 'search' means global search ignores tabs.
+        // If we switch TABS, do we clear search?
+        // User behavior: if I search #1005, I see result. If I click "New", do I expect to see #1005 or New list?
+        // I expect to see New list. So clear search.
+        if (executedSearchTerm) {
+            setSearchText('');
+            setExecutedSearchTerm('');
+        }
     }, [activeTab]);
 
-    // 1. Data Loading (Paginated)
+    // 1. Data Loading (Paginated + Search)
     useEffect(() => {
         if (!user) return;
 
@@ -63,26 +79,37 @@ const Dashboard: React.FC = () => {
         let unsubscribe: (() => void) | undefined;
         let constraints: any[] = [];
 
-        // Build Constraints based on Role & Tab
         import('../services/firebase').then(({ where }) => {
-            if (isDS) {
-                if (activeTab === 'new') {
-                    constraints.push(where('status', '==', 'new'));
+            // SEARCH MODE
+            if (executedSearchTerm.trim()) {
+                const term = executedSearchTerm.trim();
+                console.log("🔍 Server-side Search (ID only):", term);
+
+                // Clean '#' and whitespace
+                const cleanId = term.replace(/^#/, '').trim();
+
+                // Search ONLY by readableId
+                constraints.push(where('readableId', '==', cleanId));
+            }
+            // TAB / FILTER MODE
+            else {
+                if (isDS) {
+                    if (activeTab === 'new') {
+                        constraints.push(where('status', '==', 'new'));
+                    } else {
+                        constraints.push(where('designerId', '==', user.uid));
+                        constraints.push(where('status', '==', activeTab));
+                    }
                 } else {
-                    constraints.push(where('designerId', '==', user.uid));
-                    constraints.push(where('status', '==', activeTab));
-                }
-            } else {
-                if (activeTab !== 'new' && activeTab !== 'doing' && activeTab !== 'in_review' && activeTab !== 'need_fix' && activeTab !== 'done') {
-                    // If unexpected tab, maybe fetch all? Or stick to known statuses.
-                    // The View 'all' is not in tabs.
-                    constraints.push(where('status', '==', activeTab));
-                } else {
-                    constraints.push(where('status', '==', activeTab));
+                    if (activeTab !== 'new' && activeTab !== 'doing' && activeTab !== 'in_review' && activeTab !== 'need_fix' && activeTab !== 'done') {
+                        constraints.push(where('status', '==', activeTab));
+                    } else {
+                        constraints.push(where('status', '==', activeTab));
+                    }
                 }
             }
 
-            // 1. Get Total Count (Only on first page or tab change)
+            // 1. Get Total Count (Only on first page or tab/search change)
             if (page === 1) {
                 import('../services/firebase').then(({ getOrdersCount }) => {
                     getOrdersCount(constraints).then(count => setTotal(count));
@@ -111,26 +138,17 @@ const Dashboard: React.FC = () => {
         return () => {
             if (unsubscribe) unsubscribe();
         };
-    }, [user, activeTab, isDS, page, pageSize]); // Dependencies
+    }, [user, activeTab, isDS, page, pageSize, executedSearchTerm]); // Add executedSearchTerm dependency
 
     const handlePageChange = (p: number, ps: number) => {
         setPage(p);
         setPageSize(ps);
     };
 
-    // Client-side Search (on current page data)
+    // Use server-fetched data directly (already filtered)
     const filteredOrders = React.useMemo(() => {
-        let res = orders;
-        if (searchText) {
-            const lower = searchText.toLowerCase();
-            res = res.filter(o =>
-                o.title.toLowerCase().includes(lower) ||
-                o.readableId.toString().includes(lower) ||
-                (o.sku && o.sku.toLowerCase().includes(lower))
-            );
-        }
-        return sortOrders(res);
-    }, [orders, searchText]);
+        return sortOrders(orders);
+    }, [orders]);
 
     // Actions
     const handleOpenDetail = (order: Order) => { setSelectedOrder(order); setIsDetailModalOpen(true); };
@@ -144,179 +162,42 @@ const Dashboard: React.FC = () => {
         }
     };
 
-    const renderOrderCard = (order: Order) => {
-        const isUrgent = order.isUrgent;
-        const deadlineDisplay = order.deadline
-            ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline).format('DD/MM')
-            : null;
-
-        const formatDropboxUrl = (url?: string) => {
-            if (!url) return '';
-            if (url.includes('?') && url.lastIndexOf('?') > url.indexOf('?')) return url.replace(/\?raw=1$/, '&raw=1');
-            if (url.includes('raw=1')) return url;
-            if (url.includes('dropbox.com')) {
-                const clean = url.replace('?dl=0', '').replace('&dl=0', '');
-                return clean + (clean.includes('?') ? '&' : '?') + 'raw=1';
-            }
-            return url;
-        };
-
-        return (
-            <Card
-                key={order.id}
-                hoverable
-                className={`mb-4 shadow-sm transition-all duration-300 ${isUrgent ? 'border-2 border-red-500 bg-red-50' : 'border-gray-200'}`}
-                style={{ borderColor: isUrgent ? '#f5222d' : undefined, backgroundColor: isUrgent ? '#fff1f0' : undefined }}
-                onClick={() => handleOpenDetail(order)}
-                cover={
-                    <div style={{ height: 180, position: 'relative', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                        {order.mockupUrl ? (
-                            <Image
-                                alt="mockup"
-                                src={formatDropboxUrl(order.mockupUrl)}
-                                preview={false}
-                                width="100%"
-                                height="100%"
-                                style={{ objectFit: 'cover' }}
-                                fallback="https://placehold.co/400x300/e6e6e6/a3a3a3?text=No+Image"
-                            />
-                        ) : (
-                            <div className="text-gray-300"><CloudUploadOutlined style={{ fontSize: 32, color: '#ccc' }} /></div>
-                        )}
-                        {isUrgent && <div style={{ position: 'absolute', top: 0, right: 0, background: '#f5222d', color: '#fff', fontSize: 12, fontWeight: 'bold', padding: '4px 8px', borderRadius: '0 0 0 8px' }}> 🔥</div>}
-                        {isCS && (
-                            <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }} onClick={e => e.stopPropagation()}>
-                                <Popconfirm title="Xóa task?" onConfirm={() => handleDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText="Xóa" cancelText="Hủy">
-                                    <Button shape="circle" size="small" danger icon={<DeleteOutlined />} style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} />
-                                </Popconfirm>
-                            </div>
-                        )}
-                    </div>
-                }
-                actions={[
-                    (isDS && order.status === 'doing') ? <Button type="text" danger icon={<RollbackOutlined />} onClick={(e) => handleOpenGiveBack(e, order)}>Trả đơn</Button> : null,
-                ].filter(Boolean) as React.ReactNode[]}
-            >
-                <Card.Meta
-                    title={
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {/* Header: ID + Date */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: 18, fontWeight: 800, color: isUrgent ? '#ff4d4f' : '#eb2f96', lineHeight: 1 }}>
-                                    {isUrgent && <FireFilled style={{ marginRight: 4 }} />} #{order.readableId}
-                                </span>
-                                {order.created_at && (
-                                    <span style={{ fontSize: 12, color: '#999', background: '#fafafa', padding: '2px 8px', borderRadius: 12, border: '1px solid #f0f0f0' }}>
-                                        {dayjs((order.created_at as any).toDate ? (order.created_at as any).toDate() : order.created_at).format('DD/MM')}
-                                    </span>
-                                )}
-                            </div>
-
-                            {/* Title Box */}
-                            <div style={{
-                                fontSize: 13,
-                                background: '#f9f9f9',
-                                color: '#595959',
-                                padding: '6px 10px',
-                                borderRadius: 8,
-                                width: '100%',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                border: '1px solid #f0f0f0'
-                            }} title={order.title}>
-                                {order.title}
-                            </div>
-                        </div>
-                    }
-                    description={
-                        /* Footer: Tags */
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-                            {deadlineDisplay ? (
-                                <Tag icon={<ClockCircleOutlined />} color={isUrgent ? 'red' : 'default'} style={{ margin: 0, fontSize: 12, border: 'none', background: isUrgent ? '#fff1f0' : '#f5f5f5' }}>
-                                    {deadlineDisplay}
-                                </Tag>
-                            ) : <span />}
-                            {order.sku && <Tag color="blue" style={{ margin: 0, border: 'none', background: '#e6f7ff', color: '#1890ff' }}>{order.sku}</Tag>}
-                        </div>
-                    }
-                />
-            </Card>
-        );
-    };
-
-    const renderOrderRow = (order: Order) => {
-        const isUrgent = order.isUrgent;
-        const deadlineDisplay = order.deadline
-            ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline).format('DD/MM')
-            : null;
-
-        return (
-            <div
-                key={order.id}
-                className={`cinematic-row-card ${isUrgent ? 'border-red-500 bg-red-50' : ''}`}
-                style={{ borderColor: isUrgent ? '#f5222d' : undefined }}
-                onClick={() => handleOpenDetail(order)}
-            >
-                <div style={{ width: 80, height: 80, borderRadius: 8, overflow: 'hidden', marginRight: 16, flexShrink: 0 }}>
-                    {order.mockupUrl ? (
-                        <Image
-                            src={order.mockupUrl}
-                            preview={false}
-                            width="100%"
-                            height="100%"
-                            style={{ objectFit: 'cover' }}
-                            fallback="https://placehold.co/80x80/e6e6e6/a3a3a3?text=Img"
-                        />
-                    ) : (
-                        <div style={{ width: '100%', height: '100%', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <CloudUploadOutlined style={{ color: '#ccc' }} />
-                        </div>
-                    )}
-                </div>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontWeight: 800, fontSize: 18, color: isUrgent ? '#cf1322' : '#eb2f96', lineHeight: 1.2 }}>
-                                {isUrgent && <FireFilled style={{ marginRight: 4 }} />} #{order.readableId}
-                            </span>
-                            <span style={{ fontSize: 13, color: '#666', background: '#f5f5f5', padding: '2px 8px', borderRadius: 4, marginTop: 4, maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {order.title}
-                            </span>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: 11, color: '#999' }}>
-                                {order.created_at ? dayjs((order.created_at as any).toDate ? (order.created_at as any).toDate() : order.created_at).format('DD/MM HH:mm') : ''}
-                            </div>
-                        </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                        {deadlineDisplay && <Tag color={isUrgent ? 'red' : 'default'} style={{ margin: 0 }}>{deadlineDisplay}</Tag>}
-                        {order.sku && <Tag color="blue" style={{ margin: 0 }}>{order.sku}</Tag>}
-                        <span style={{ fontSize: 13, color: '#666', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {order.description || 'No desc'}
-                        </span>
-                    </div>
-                </div>
-                {isCS && (
-                    <div style={{ display: 'flex', alignItems: 'center', paddingLeft: 12 }}>
-                        <Popconfirm title="Xóa?" onConfirm={() => handleDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText="Xóa" cancelText="Hủy">
-                            <Button type="text" danger icon={<DeleteOutlined />} onClick={e => e.stopPropagation()} />
-                        </Popconfirm>
-                    </div>
-                )}
-            </div>
-        );
-    };
-
     const renderTabContent = () => {
         if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Spin size="large" /></div>;
         if (filteredOrders.length === 0) return <Empty description="Trống" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
 
         if (viewMode === 'list') {
-            return <div style={{ padding: 16 }}>{filteredOrders.map(renderOrderRow)}</div>;
+            return (
+                <div style={{ padding: 16 }}>
+                    {filteredOrders.map(order => (
+                        <OrderRow
+                            key={order.id}
+                            order={order}
+                            isUrgent={order.isUrgent}
+                            isCS={isCS}
+                            onOpenDetail={handleOpenDetail}
+                            onDelete={handleDelete}
+                        />
+                    ))}
+                </div>
+            );
         }
-        return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, padding: 16 }}>{filteredOrders.map(renderOrderCard)}</div>;
+        return (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, padding: 16 }}>
+                {filteredOrders.map(order => (
+                    <OrderCard
+                        key={order.id}
+                        order={order}
+                        isUrgent={order.isUrgent}
+                        isCS={isCS}
+                        isDS={isDS}
+                        onOpenDetail={handleOpenDetail}
+                        onOpenGiveBack={handleOpenGiveBack}
+                        onDelete={handleDelete}
+                    />
+                ))}
+            </div>
+        );
     };
 
     const tabItems = [
@@ -346,7 +227,7 @@ const Dashboard: React.FC = () => {
             />
             <Content style={{ padding: 18 }}>
                 <div style={{ background: '#fff', borderRadius: 12, minHeight: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'column' }}>
-                    <div style={{height:'80px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 24px' }}>
+                    <div style={{ height: '80px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 24px' }}>
                         <Tabs
                             activeKey={activeTab}
                             onChange={(key) => navigate('/' + key)}
@@ -357,6 +238,10 @@ const Dashboard: React.FC = () => {
                                 <SearchInput
                                     value={searchText}
                                     onChange={setSearchText}
+                                    onSearch={(val) => {
+                                        setExecutedSearchTerm(val);
+                                        setPage(1);
+                                    }}
                                     style={{ width: 300 }}
                                 />
                             }

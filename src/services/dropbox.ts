@@ -90,9 +90,12 @@ export const checkDropboxConnection = async () => {
     return !!(accessToken || refreshToken);
 };
 
+// Singleton promise to handle concurrent refreshes
+let refreshPromise: Promise<any> | null = null;
+
 export const getDbxClient = async () => {
-    const accessToken = localStorage.getItem('dropbox_access_token');
-    const refreshToken = localStorage.getItem('dropbox_refresh_token');
+    let accessToken = localStorage.getItem('dropbox_access_token');
+    let refreshToken = localStorage.getItem('dropbox_refresh_token');
     const expiresAt = localStorage.getItem('dropbox_expires_at');
 
     if (!accessToken && !refreshToken) {
@@ -101,60 +104,82 @@ export const getDbxClient = async () => {
 
     const dbxAuth = getDbxAuth();
 
-    // Check if token expired or will expire soon (within 5 minutes)
-    const expiryThreshold = Date.now() + (5 * 60 * 1000); // 5 minutes buffer
+    // Check if expected to expire soon (buffer 5 mins)
+    const expiryThreshold = Date.now() + (5 * 60 * 1000);
     const isExpired = expiresAt && parseInt(expiresAt) < expiryThreshold;
 
     if (isExpired && refreshToken) {
-        try {
-            console.log('🔄 Refreshing Dropbox token...');
-            dbxAuth.setRefreshToken(refreshToken);
+        // If a refresh is already in progress, wait for it
+        if (refreshPromise) {
+            console.log('⏳ Waiting for existing token refresh...');
+            await refreshPromise;
+            // After waiting, get the new token from storage
+            accessToken = localStorage.getItem('dropbox_access_token');
+            if (accessToken) {
+                dbxAuth.setAccessToken(accessToken);
+                return new Dropbox({ auth: dbxAuth });
+            }
+        }
 
-            const response = await dbxAuth.refreshAccessToken() as any;
-            console.log('📥 Refresh response:', response);
+        // Start a new refresh process
+        refreshPromise = (async () => {
+            try {
+                console.log('🔄 Refreshing Dropbox token (Singleton)...');
+                dbxAuth.setRefreshToken(refreshToken!); // ! safe because of outer check
 
-            if (response?.result?.access_token) {
-                const newAccess = response.result.access_token;
-                const newExpiresIn = response.result.expires_in || 14400;
-                const newRefresh = response.result.refresh_token;
+                const response = await dbxAuth.refreshAccessToken() as any;
+                console.log('📥 Refresh response:', response);
 
-                localStorage.setItem('dropbox_access_token', newAccess);
-                localStorage.setItem('dropbox_expires_at', (Date.now() + (newExpiresIn * 1000)).toString());
+                if (response?.result?.access_token) {
+                    const newAccess = response.result.access_token;
+                    const newExpiresIn = response.result.expires_in || 14400;
+                    const newRefresh = response.result.refresh_token;
 
-                if (newRefresh) {
-                    localStorage.setItem('dropbox_refresh_token', newRefresh);
-                }
+                    localStorage.setItem('dropbox_access_token', newAccess);
+                    localStorage.setItem('dropbox_expires_at', (Date.now() + (newExpiresIn * 1000)).toString());
 
-                // Sync to Firestore for global persistence
-                await saveSystemSettings({
-                    dropbox: {
-                        access_token: newAccess,
-                        refresh_token: newRefresh || refreshToken,
-                        expires_at: Date.now() + (newExpiresIn * 1000)
+                    if (newRefresh) {
+                        localStorage.setItem('dropbox_refresh_token', newRefresh);
                     }
-                }).catch(err => console.error("Failed to sync refreshed token to Firestore:", err));
 
-                dbxAuth.setAccessToken(newAccess);
-                console.log('✅ Token refreshed successfully');
-            } else {
-                console.error('⚠️ Refresh returned unexpected format');
+                    // Sync to Firestore
+                    await saveSystemSettings({
+                        dropbox: {
+                            access_token: newAccess,
+                            refresh_token: newRefresh || refreshToken,
+                            expires_at: Date.now() + (newExpiresIn * 1000)
+                        }
+                    }).catch(err => console.error("Failed to sync refreshed token to Firestore:", err));
+
+                    dbxAuth.setAccessToken(newAccess);
+                    console.log('✅ Token refreshed successfully');
+                    return newAccess;
+                } else {
+                    throw new Error("Refresh returned unexpected format");
+                }
+            } catch (error: any) {
+                console.error('❌ Refresh failed:', error);
                 localStorage.removeItem('dropbox_access_token');
                 localStorage.removeItem('dropbox_refresh_token');
                 localStorage.removeItem('dropbox_expires_at');
-                throw new Error("Token refresh thất bại. Vui lòng vào Admin panel → Reconnect Dropbox.");
+                throw error;
+            } finally {
+                refreshPromise = null; // Reset promise
             }
+        })();
+
+        try {
+            const newAccessToken = await refreshPromise;
+            // Ensure we use the new token
+            if (newAccessToken) dbxAuth.setAccessToken(newAccessToken);
         } catch (error: any) {
-            console.error('❌ Refresh failed:', error);
-            localStorage.removeItem('dropbox_access_token');
-            localStorage.removeItem('dropbox_refresh_token');
-            localStorage.removeItem('dropbox_expires_at');
-            throw new Error(`Dropbox token hết hạn. Vui lòng vào Admin panel → Reconnect Dropbox. (${error.message})`);
+            throw new Error(`Dropbox token hết hạn và không thể refresh. Vui lòng vào Admin panel → Connect Dropbox. (${error.message})`);
         }
     } else {
         if (accessToken) {
             dbxAuth.setAccessToken(accessToken);
         } else {
-            throw new Error("Không có Dropbox token hợp lệ. Vui lòng vào Admin panel → Connect Dropbox.");
+            throw new Error("Không có Dropbox token hợp lệ.");
         }
     }
 
@@ -165,11 +190,19 @@ export const uploadFileToDropbox = async (file: File, path: string) => {
     try {
         const dbx = await getDbxClient();
 
-        const response = await dbx.filesUpload({
+        // Wrap upload in a timeout to prevent hanging indefinitely
+        const UPLOAD_TIMEOUT = 120000; // 2 minutes
+        const uploadPromise = dbx.filesUpload({
             path,
             contents: file,
             mode: { '.tag': 'overwrite' }
         });
+
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('REQUEST_TIMEOUT')), UPLOAD_TIMEOUT)
+        );
+
+        const response = await Promise.race([uploadPromise, timeoutPromise]) as any;
 
         const sharedLinkResponse = await dbx.sharingCreateSharedLinkWithSettings({
             path: response.result.path_display || path,
@@ -192,6 +225,10 @@ export const uploadFileToDropbox = async (file: File, path: string) => {
 
         if (error.status === 401 || error.message?.includes('401') || error.message?.includes('Unauthorized')) {
             throw new Error('🔐 Dropbox token hết hạn. Vui lòng vào Admin panel → Reconnect Dropbox → Thử lại.');
+        }
+
+        if (error.message === 'REQUEST_TIMEOUT') {
+            throw new Error('⏱️ Upload quá lâu (Timeout). Vui lòng kiểm tra mạng và thử lại.');
         }
 
         throw new Error(error.message || 'Dropbox upload failed');
