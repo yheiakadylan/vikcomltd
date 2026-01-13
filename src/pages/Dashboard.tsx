@@ -198,7 +198,7 @@ const Dashboard: React.FC = () => {
                         order={order}
                         isUrgent={order.isUrgent}
                         isCS={isCS}
-                        isDS={isDS}
+                        isDS={isDS || (user?.role === 'ADMIN' && order.designerId === user?.uid)}
                         onOpenDetail={handleOpenDetail}
                         onOpenGiveBack={handleOpenGiveBack}
                         onDelete={handleDelete}
