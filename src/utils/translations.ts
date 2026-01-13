@@ -117,6 +117,35 @@ export const translations = {
                 placeholder: 'Enter comment...',
                 send: 'Send'
             }
+        },
+        notifications: {
+            uploadSuccess: {
+                message: 'Submitted: Order #',
+                description: 'Upload complete. Order status changed to In Review.'
+            },
+            uploadError: {
+                message: 'Auto-Submit Failed: Order #',
+                description: 'Please check the order.'
+            },
+            createTaskSuccess: {
+                message: 'Task Created: Order #',
+                description: 'Files uploaded to Dropbox successfully.'
+            },
+            uploadComplete: {
+                message: 'Upload Complete: Order #',
+                description: 'All files uploaded successfully.'
+            }
+        },
+        widget: {
+            uploading: 'Uploading',
+            completed: 'Uploads Completed',
+            uploadComplete: 'Upload Complete',
+            files: 'files',
+            clear: 'Clear All',
+            minimized: {
+                uploading: 'Uploading',
+                completed: 'Upload Complete'
+            }
         }
     },
     vi: {
@@ -237,8 +266,38 @@ export const translations = {
                 placeholder: 'Nhập trao đổi...',
                 send: 'Gửi'
             }
+        },
+        notifications: {
+            uploadSuccess: {
+                message: 'Đã gửi lên: Đơn #',
+                description: 'Upload hoàn tất. Đơn đã chuyển sang trạng thái chờ duyệt.'
+            },
+            uploadError: {
+                message: 'Lỗi tải lên tự động: Đơn #',
+                description: 'Vui lòng kiểm tra lại đơn hàng.'
+            },
+            createTaskSuccess: {
+                message: 'Tạo Task hoàn tất: Đơn #',
+                description: 'Các file đính kèm đã được tải lên Dropbox thành công.'
+            },
+            uploadComplete: {
+                message: 'Upload hoàn tất: Đơn #',
+                description: 'Tất cả file đã được tải lên thành công.'
+            }
+        },
+        widget: {
+            uploading: 'Đang tải lên',
+            completed: 'Upload hoàn tất',
+            uploadComplete: 'Upload xong',
+            files: 'file',
+            clear: 'Xóa tất cả',
+            minimized: {
+                uploading: 'Đang tải',
+                completed: 'Đã xong'
+            }
         }
     }
 };
+
 
 export type Language = 'en' | 'vi';

@@ -4,6 +4,8 @@ import { uploadFileToDropbox } from '../services/dropbox';
 import { updateOrder } from '../services/firebase';
 import { arrayUnion } from 'firebase/firestore';
 import { notification } from 'antd';
+import { useLanguage } from './LanguageContext';
+import { translations } from '../utils/translations';
 
 interface UploadContextType {
     queue: UploadItem[];
@@ -18,6 +20,7 @@ interface UploadContextType {
 const UploadContext = createContext<UploadContextType | undefined>(undefined);
 
 export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const { language } = useLanguage();
     const [queue, setQueue] = useState<UploadItem[]>([]);
     const processingRef = useRef(false);
     const notifiedOrdersRef = useRef<Set<string>>(new Set());
@@ -76,25 +79,28 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     updateOrder(oid, { status: 'in_review', updatedAt: new Date() })
                         .then(() => {
                             notification.success({
-                                message: `Đã nộp bài: Đơn #${readableId}`,
-                                description: 'Upload hoàn tất. Đơn đã chuyển sang trạng thái chờ duyệt.',
+                                message: `${translations[language].notifications.uploadSuccess.message}${readableId}`,
+                                description: translations[language].notifications.uploadSuccess.description,
                                 placement: 'bottomRight',
+                                duration: 5
                             });
                             completionActionsRef.current.delete(oid); // remove from auto submit
                         })
                         .catch(err => {
                             console.error("Auto Submit Failed", err);
                             notification.error({
-                                message: `Lỗi nộp bài tự động: Đơn #${readableId}`,
-                                description: 'Vui lòng kiểm tra lại đơn hàng.',
+                                message: `${translations[language].notifications.uploadError.message}${readableId}`,
+                                description: translations[language].notifications.uploadError.description,
+                                duration: 5
                             });
                         });
                     return; // Skip standard notification
                 } else if (action === 'notify_creation') {
                     notification.success({
-                        message: `Tạo Task hoàn tất: Đơn #${readableId}`,
-                        description: 'Các file đính kèm đã được tải lên Dropbox thành công.',
+                        message: `${translations[language].notifications.createTaskSuccess.message}${readableId}`,
+                        description: translations[language].notifications.createTaskSuccess.description,
                         placement: 'bottomRight',
+                        duration: 5
                     });
                     completionActionsRef.current.delete(oid);
                     return;
@@ -103,11 +109,11 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (!notifiedOrdersRef.current.has(oid)) {
                     // Standard Notification (No Action Button)
                     notification.success({
-                        message: `Upload hoàn tất: Đơn #${readableId}`, // Simple ID for now, ideally queue has readableId or we fetch it
-                        description: 'Tất cả file đã được tải lên thành công.',
+                        message: `${translations[language].notifications.uploadComplete.message}${readableId}`,
+                        description: translations[language].notifications.uploadComplete.description,
                         placement: 'bottomRight',
                         duration: 5,
-                        key: oid // Use key to prevent duplicate or allow closing
+                        key: oid
                     });
 
                     notifiedOrdersRef.current.add(oid);
