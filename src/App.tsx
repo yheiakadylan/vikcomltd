@@ -6,6 +6,8 @@ import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
 import AuthCallback from './pages/AuthCallback';
 import { Spin, App as AntdApp } from 'antd';
+import { UploadProvider } from './contexts/UploadContext';
+import UploadWidget from './components/common/UploadWidget';
 
 // Component bảo vệ Route
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) => {
@@ -58,11 +60,14 @@ const AppRoutes = () => {
 function App() {
   return (
     <AuthProvider>
-      <AntdApp>
-        <Router>
-          <AppRoutes />
-        </Router>
-      </AntdApp>
+      <UploadProvider>
+        <AntdApp>
+          <Router>
+            <AppRoutes />
+            <UploadWidget />
+          </Router>
+        </AntdApp>
+      </UploadProvider>
     </AuthProvider>
   );
 }

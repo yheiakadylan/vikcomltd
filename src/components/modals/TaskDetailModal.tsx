@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import dayjs from 'dayjs';
-import { Modal, Form, Input, Button, Upload, message, Tag, Row, Col, Image, Divider, Spin, Tabs, Timeline } from 'antd';
+import { Modal, Form, Input, Button, Upload, message, Tag, Row, Col, Image, Divider, Tabs, Timeline } from 'antd';
 import { InboxOutlined, CloudUploadOutlined, FileOutlined, FileImageOutlined, DeleteOutlined, UserOutlined, ClockCircleOutlined, SendOutlined, PaperClipOutlined, SaveOutlined } from '@ant-design/icons';
 import type { Order, FileAttachment, User } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateOrder, getUsers, subscribeToLogs, addOrderLog, claimOrder } from '../../services/firebase';
 import { uploadFileToDropbox } from '../../services/dropbox';
 import { colors } from '../../theme/themeConfig';
+import { useUpload } from '../../contexts/UploadContext';
 
 const { Dragger } = Upload;
 const { TextArea } = Input;
@@ -24,7 +25,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
     const [form] = Form.useForm();
     const [isUrgent, setIsUrgent] = useState(false);
     const [designFiles, setDesignFiles] = useState<FileAttachment[]>([]);
-    const [uploading, setUploading] = useState(false);
 
     const [logs, setLogs] = useState<any[]>([]);
     const [comment, setComment] = useState('');
@@ -132,8 +132,32 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
         }
     };
 
+    const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+    const { enqueue, registerCompletionAction } = useUpload();
+
+    const handleFileSelect = ({ file, onSuccess }: any) => {
+        // This is a workaround because beforeUpload returning false in Dragger sometimes doesn't play nice with custom UI
+        // But actually, we can just use customRequest to capture the file
+        setStagedFiles(prev => [...prev, file]);
+        setTimeout(() => onSuccess("ok"), 0);
+    };
+
     const handleDSSubmit = async () => {
         if (!order) return;
+
+        // 1. Enqueue Staged Files
+        if (stagedFiles.length > 0) {
+            enqueue(stagedFiles, order.id, 'designFiles', order.dropboxPath ? `${order.dropboxPath}/DesignFiles` : `/PINK_POD_SYSTEM/Unsorted/${order.readableId}/DesignFiles`, String(order.readableId));
+
+            // Register Auto Submit
+            registerCompletionAction(order.id, 'auto_submit');
+
+            message.success('Đã nộp bài! Hệ thống đang upload...');
+            onCancel();
+            return;
+        }
+
+        // 2. If no new files, but maybe just changing status (e.g. if files were uploaded previously or manually)
         try {
             await updateOrder(order.id, {
                 status: 'in_review',
@@ -163,33 +187,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
         }
     };
 
-    const customUploadRequest = async (options: any) => {
-        const { file, onSuccess, onError } = options;
-        setUploading(true);
-        try {
-            const folderName = order?.dropboxPath
-                ? `${order.dropboxPath}/DesignFiles/${file.name}`
-                : `/PINK_POD_SYSTEM/Unsorted/${order?.readableId}/DesignFiles/${file.name}`;
 
-            const result = await uploadFileToDropbox(file, folderName);
 
-            // Access via result.url provided by our service logic (raw=1)
-            const linkUrl = (result as any).url || (result as any).preview_url || '#';
-            const fileName = (result as any).name || file.name;
 
-            const newFile = { name: fileName, link: linkUrl };
-
-            setDesignFiles(prev => [...prev, newFile]);
-
-            setUploading(false);
-            onSuccess("Ok");
-            message.success(`Đã upload ${file.name}`);
-        } catch (err) {
-            setUploading(false);
-            onError(err);
-            message.error('Lỗi upload. Hãy kiểm tra kết nối Dropbox.');
-        }
-    };
 
     const [commentFiles, setCommentFiles] = useState<File[]>([]); // Store raw files
     const [commentUploading, setCommentUploading] = useState(false);
@@ -445,7 +445,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                         type="primary"
                                                         onClick={handleDSSubmit}
                                                         style={{ background: colors.primaryPink, borderColor: colors.primaryPink, fontWeight: 600 }}
-                                                        disabled={designFiles.length === 0}
+                                                        disabled={stagedFiles.length === 0 && designFiles.length === 0}
                                                         icon={<CloudUploadOutlined />}
                                                     >
                                                         Nộp bài
@@ -455,7 +455,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
 
                                             {canDSWork && (
                                                 <Dragger
-                                                    customRequest={customUploadRequest}
+                                                    customRequest={handleFileSelect}
                                                     showUploadList={false}
                                                     multiple
                                                     style={{ background: '#fff' }}
@@ -463,8 +463,57 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                     <p className="ant-upload-drag-icon">
                                                         <CloudUploadOutlined style={{ color: colors.primaryPink }} />
                                                     </p>
-                                                    <p className="ant-upload-text" style={{ fontSize: 13 }}>Kéo thả hoặc click để upload file Final</p>
+                                                    <p className="ant-upload-text" style={{ fontSize: 13 }}>Kéo thả hoặc click để chọn file (Chưa upload)</p>
                                                 </Dragger>
+                                            )}
+
+                                            {/* Staged Files List */}
+                                            {stagedFiles.length > 0 && (
+                                                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#fa8c16' }}>File chờ upload ({stagedFiles.length}):</div>
+                                                    {stagedFiles.map((file, idx) => {
+                                                        const isImage = /\.(jpeg|jpg|png|gif|webp|svg)$/i.test(file.name);
+                                                        const fileUrl = URL.createObjectURL(file);
+
+                                                        return (
+                                                            <div key={idx} style={{
+                                                                display: 'flex', alignItems: 'center', gap: 12,
+                                                                background: '#fffbe6', padding: 8, borderRadius: 8,
+                                                                border: '1px solid #ffe58f'
+                                                            }}>
+                                                                <div style={{ width: 48, height: 48, flexShrink: 0, border: '1px solid #ffe58f', borderRadius: 4, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+                                                                    {isImage ? (
+                                                                        <img
+                                                                            src={fileUrl}
+                                                                            alt={file.name}
+                                                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                                                        />
+                                                                    ) : (
+                                                                        <FileOutlined style={{ fontSize: 24, color: '#fa8c16' }} />
+                                                                    )}
+                                                                </div>
+
+                                                                <div style={{ flex: 1, overflow: 'hidden' }}>
+                                                                    <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={file.name}>
+                                                                        {file.name}
+                                                                    </div>
+                                                                    <div style={{ fontSize: 11, color: '#999' }}>
+                                                                        {(file.size / 1024).toFixed(1)} KB
+                                                                    </div>
+                                                                </div>
+
+                                                                <Button
+                                                                    type="text"
+                                                                    danger
+                                                                    size="small"
+                                                                    icon={<DeleteOutlined />}
+                                                                    onClick={() => setStagedFiles(p => p.filter((_, i) => i !== idx))}
+                                                                />
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    <Divider style={{ margin: '8px 0' }} />
+                                                </div>
                                             )}
 
                                             {/* File List */}
@@ -520,7 +569,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                     !canDSWork && <div style={{ color: '#ccc', textAlign: 'center', fontSize: 12 }}>Chưa có file. </div>
                                                 )}
                                             </div>
-                                            {uploading && <div style={{ color: colors.primaryPink, fontSize: 12, marginTop: 8, textAlign: 'center' }}><Spin size="small" /> Đang upload...</div>}
+
                                         </div>
                                     </>
                                 )

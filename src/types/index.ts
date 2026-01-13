@@ -46,3 +46,22 @@ export interface Order {
     created_at?: any;
     updatedAt?: any;
 }
+
+export type UploadStatus = 'pending' | 'uploading' | 'success' | 'error' | 'retrying' | 'paused';
+
+export interface UploadItem {
+    id: string; // Unique ID (e.g. from uuid or timestamp)
+    file: File;
+    status: UploadStatus;
+    progress: number; // 0-100
+    error?: string;
+
+    // Context Info
+    orderId: string;
+    readableId?: string; // Human-readable order ID for notifications
+    targetField: 'customerFiles' | 'designFiles' | 'mockupUrl';
+    dropboxPath: string; // Target path in Dropbox
+
+    // Result
+    resultUrl?: string;
+}

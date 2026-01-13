@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Tabs, Table, Button, Modal, Form, Input, Select, Tag, Card, App, Popconfirm, Avatar, Spin } from 'antd';
 import { PlusOutlined, DropboxOutlined, CheckCircleFilled, UserOutlined } from '@ant-design/icons';
-import { getUsers, createSecondaryUser, createUserProfile, getSystemSettings } from '../services/firebase';
-import { getDropboxAuthUrl, getDropboxAccountInfo } from '../services/dropbox';
+import { getUsers, createSecondaryUser, createUserProfile, getSystemSettings, saveSystemSettings } from '../services/firebase';
+import { initiateDropboxOAuth, checkDropboxConnection, getDropboxAccountInfo } from '../services/dropbox';
 import { useAuth } from '../contexts/AuthContext';
 import AppHeader from '../components/layout/AppHeader';
 import type { User } from '../types';
@@ -49,11 +49,16 @@ const Admin: React.FC = () => {
                 if (settings.dropbox.refresh_token) {
                     localStorage.setItem('dropbox_refresh_token', settings.dropbox.refresh_token);
                 }
-                setDropboxConnected(true);
 
-                // Fetch info
-                const info = await getDropboxAccountInfo();
-                setDropboxInfo(info);
+                const isConnected = await checkDropboxConnection();
+                setDropboxConnected(isConnected);
+
+                if (isConnected) {
+                    const info = await getDropboxAccountInfo();
+                    setDropboxInfo(info);
+                } else {
+                    setDropboxInfo(null);
+                }
             } else {
                 setDropboxConnected(false);
                 setDropboxInfo(null);
@@ -103,13 +108,12 @@ const Admin: React.FC = () => {
         }
     };
 
-    const handleConnectDropbox = async () => {
+    const handleConnectDropbox = () => {
         try {
-            const authUrl = await getDropboxAuthUrl();
-            window.location.href = authUrl as string;
+            initiateDropboxOAuth();
         } catch (error) {
             console.error(error);
-            message.error("Không lấy được URL xác thực Dropbox");
+            message.error("Không thể kết nối Dropbox");
         }
     };
 
@@ -160,7 +164,7 @@ const Admin: React.FC = () => {
             <Table
                 columns={columns}
                 dataSource={users}
-                rowKey="uid"
+                rowKey={(record) => record.uid || String(Math.random())}
                 loading={loading}
                 pagination={{ pageSize: 10 }}
             />
@@ -218,13 +222,24 @@ const Admin: React.FC = () => {
                         <Popconfirm
                             title="Ngắt kết nối Dropbox"
                             description="Bạn có chắc chắn muốn ngắt kết nối? Các tính năng upload sẽ ngừng hoạt động."
-                            onConfirm={() => {
-                                localStorage.removeItem('dropbox_access_token');
-                                localStorage.removeItem('dropbox_refresh_token');
-                                localStorage.removeItem('minph_dropbox_verifier');
-                                setDropboxConnected(false);
-                                setDropboxInfo(null);
-                                message.success("Đã ngắt kết nối");
+                            onConfirm={async () => {
+                                try {
+                                    localStorage.removeItem('dropbox_access_token');
+                                    localStorage.removeItem('dropbox_refresh_token');
+                                    localStorage.removeItem('dropbox_expires_at');
+                                    sessionStorage.removeItem('dropboxCodeVerifier');
+
+                                    await saveSystemSettings({
+                                        dropbox: null
+                                    });
+
+                                    setDropboxConnected(false);
+                                    setDropboxInfo(null);
+                                    message.success("Đã ngắt kết nối");
+                                } catch (error) {
+                                    console.error(error);
+                                    message.error("Lỗi khi ngắt kết nối");
+                                }
                             }}
                             okText="Đồng ý"
                             cancelText="Hủy"

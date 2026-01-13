@@ -6,7 +6,7 @@ import type { Order } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { doc, setDoc, collection } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { uploadFileToDropbox } from '../../services/dropbox';
+import { useUpload } from '../../contexts/UploadContext';
 import dayjs from 'dayjs';
 import ImagePreview from '../common/ImagePreview';
 
@@ -49,6 +49,8 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
             setIsUrgent(false);
         }
     }, [open, form]);
+
+    const { enqueue, registerCompletionAction } = useUpload();
 
     const handlePreview = (url: string) => {
         setPreviewImage(url);
@@ -119,55 +121,11 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
             const dropboxPath = `/PINK_POD_SYSTEM/${year}/${month}/${readableId}_${skuPart}${safeTitle}`;
 
             const newOrderRef = doc(collection(db, "tasks"));
+            const orderId = newOrderRef.id;
 
-            // Upload Mockup
-            let mockupResultUrl = '';
-            try {
-                const originalName = mockupFile.file.name;
-                const lastDot = originalName.lastIndexOf('.');
-                const ext = lastDot !== -1 ? originalName.substring(lastDot) : '';
-                const mockupName = `mockup${ext}`;
-
-                const result = await uploadFileToDropbox(
-                    mockupFile.file,
-                    `${dropboxPath}/Mockup/${mockupName}`
-                );
-                mockupResultUrl = (result as any).url || '#';
-            } catch (e) {
-                console.error("Mockup upload failed", e);
-                message.error("Lỗi upload ảnh Mockup!");
-                setLoading(false);
-                return;
-            }
-
-            // Upload Customer Files
-            const uploadedCustomerFiles = [];
-            if (customerFiles.length > 0) {
-                try {
-                    const uploadPromises = customerFiles.map(async (cFile) => {
-                        let fileName = cFile.name;
-                        const originalName = cFile.file.name;
-                        const lastDot = originalName.lastIndexOf('.');
-                        const ext = lastDot !== -1 ? originalName.substring(lastDot) : '';
-                        fileName = fileName + ext;
-
-                        const result = await uploadFileToDropbox(
-                            cFile.file,
-                            `${dropboxPath}/Customer/${fileName}`
-                        );
-                        return { name: fileName, link: (result as any).url || '#' };
-                    });
-
-                    const results = await Promise.all(uploadPromises);
-                    uploadedCustomerFiles.push(...results);
-                } catch (e) {
-                    console.error("Customer files upload failed", e);
-                    message.warning("Một số ảnh khách hàng không upload được.");
-                }
-            }
-
+            // 1. Create Order FIRST
             const orderData: Partial<Order> = {
-                id: newOrderRef.id,
+                id: orderId,
                 readableId: readableId,
                 title: values.title || '',
                 sku: values.sku || '',
@@ -176,8 +134,8 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                 isUrgent: isUrgent,
                 createdBy: user.uid || '',
                 dropboxPath: dropboxPath,
-                mockupUrl: mockupResultUrl,
-                customerFiles: uploadedCustomerFiles,
+                mockupUrl: '',
+                customerFiles: [],
                 sampleFiles: [],
                 created_at: new Date(),
                 updatedAt: new Date(),
@@ -185,7 +143,33 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
 
             await setDoc(newOrderRef, orderData);
 
-            message.success('Tạo task thành công!');
+            // Register completion action BEFORE enqueuing to be safe
+            registerCompletionAction(orderId, 'notify_creation');
+
+            // 2. Enqueue Mockup
+            const originalMockupName = mockupFile.file.name;
+            const lastDot = originalMockupName.lastIndexOf('.');
+            const ext = lastDot !== -1 ? originalMockupName.substring(lastDot) : '';
+            const finalMockupName = `mockup${ext}`;
+            const renamedMockupFile = new File([mockupFile.file], finalMockupName, { type: mockupFile.file.type });
+
+            enqueue([renamedMockupFile], orderId, 'mockupUrl', `${dropboxPath}/Mockup`, readableId);
+
+            // 3. Enqueue Customer Files
+            if (customerFiles.length > 0) {
+                const filesToUpload = customerFiles.map(cFile => {
+                    const originalName = cFile.file.name;
+                    const lastDot = originalName.lastIndexOf('.');
+                    const ext = lastDot !== -1 ? originalName.substring(lastDot) : '';
+                    const finalName = cFile.name + ext; // User edited name + ext
+
+                    return new File([cFile.file], finalName, { type: cFile.file.type });
+                });
+
+                enqueue(filesToUpload, orderId, 'customerFiles', `${dropboxPath}/Customer`, readableId);
+            }
+
+            message.success('Đã tạo task! File đang được upload nền...');
             onSuccess();
         } catch (error) {
             console.error(error);
@@ -225,7 +209,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                 <Row gutter={24}>
                     <Col span={10}>
                         {/* MOCKUP IMAGE (Required) */}
-                        <Form.Item required label={<span style={{ fontWeight: 600 }}>Ảnh Mockup (Bắt buộc)</span>}>
+                        <Form.Item label={<span style={{ fontWeight: 600 }}>Ảnh Mockup (Bắt buộc)</span>}>
                             <div className="mockup-uploader" style={{
                                 width: '100%',
                                 aspectRatio: '1/1',
@@ -302,7 +286,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                                             <PictureOutlined style={{ fontSize: 32 }} />
                                         </div>
                                         <div style={{ fontSize: 16, fontWeight: 500, color: '#262626' }}>Tải ảnh Mockup</div>
-                                        <div style={{ fontSize: 13, marginTop: 4 }}>Kéo thả hoặc Click để chọn</div>
+                                        <div style={{ fontSize: 13, marginTop: 4 }}>Kéo thả hoặc Click để chọn (Chưa upload)</div>
                                     </div>
                                 )}
                                 <input
@@ -374,6 +358,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                     >
                         <CloudUploadOutlined style={{ fontSize: 48, color: colors.primaryPink, marginBottom: 16 }} />
                         <div style={{ fontSize: 16, fontWeight: 500 }}>Click hoặc Kéo thả nhiều ảnh vào đây</div>
+                        <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>File sẽ chờ upload khi bấm "Tạo Task"</div>
                         <input
                             type="file"
                             id="customer-input"
@@ -386,58 +371,63 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
 
                     {/* Custom File List */}
                     {customerFiles.length > 0 && (
-                        <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                            gap: 16
-                        }}>
-                            {customerFiles.map((file) => (
-                                <div key={file.uid} style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    padding: 12,
-                                    background: '#fff',
-                                    border: '1px solid #ffadd2',
-                                    borderRadius: 12,
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                }}>
-                                    <div
-                                        style={{
-                                            width: 48, height: 48, flexShrink: 0,
-                                            cursor: 'pointer', overflow: 'hidden', borderRadius: 8,
-                                            border: '1px solid #f0f0f0'
-                                        }}
-                                        onClick={() => handlePreview(file.preview)}
-                                    >
-                                        <img src={file.preview} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    </div>
+                        <>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#fa8c16', marginBottom: 12 }}>
+                                File chờ upload ({customerFiles.length})
+                            </div>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                                gap: 16
+                            }}>
+                                {customerFiles.map((file) => (
+                                    <div key={file.uid} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        padding: 12,
+                                        background: '#fff',
+                                        border: '1px solid #ffadd2',
+                                        borderRadius: 12,
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div
+                                            style={{
+                                                width: 48, height: 48, flexShrink: 0,
+                                                cursor: 'pointer', overflow: 'hidden', borderRadius: 8,
+                                                border: '1px solid #f0f0f0'
+                                            }}
+                                            onClick={() => handlePreview(file.preview)}
+                                        >
+                                            <img src={file.preview} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        </div>
 
-                                    <div style={{ flex: 1, marginLeft: 12, marginRight: 12, overflow: 'hidden' }}>
-                                        <Input
-                                            value={file.name}
-                                            onChange={(e) => handleRenameCustomerFile(file.uid, e.target.value)}
-                                            variant="borderless"
-                                            style={{ padding: 0, fontWeight: 500, width: '100%' }}
-                                            suffix={<span style={{ color: '#8c8c8c' }}>{(() => {
-                                                const originalName = file.file.name;
-                                                const lastDot = originalName.lastIndexOf('.');
-                                                return lastDot !== -1 ? originalName.substring(lastDot) : '';
-                                            })()}</span>}
-                                        />
-                                        <div style={{ fontSize: 11, color: '#8c8c8c' }}>{(file.size / 1024 / 1024).toFixed(2)} MB</div>
-                                    </div>
+                                        <div style={{ flex: 1, marginLeft: 12, marginRight: 12, overflow: 'hidden' }}>
+                                            <Input
+                                                value={file.name}
+                                                onChange={(e) => handleRenameCustomerFile(file.uid, e.target.value)}
+                                                variant="borderless"
+                                                style={{ padding: 0, fontWeight: 500, width: '100%' }}
+                                                suffix={<span style={{ color: '#8c8c8c' }}>{(() => {
+                                                    const originalName = file.file.name;
+                                                    const lastDot = originalName.lastIndexOf('.');
+                                                    return lastDot !== -1 ? originalName.substring(lastDot) : '';
+                                                })()}</span>}
+                                            />
+                                            <div style={{ fontSize: 11, color: '#8c8c8c' }}>{(file.size / 1024 / 1024).toFixed(2)} MB</div>
+                                        </div>
 
-                                    <div style={{ display: 'flex', gap: 4 }}>
-                                        <Tooltip title="Xem">
-                                            <Button type="text" size="small" icon={<EyeOutlined />} onClick={() => handlePreview(file.preview)} />
-                                        </Tooltip>
-                                        <Tooltip title="Xóa">
-                                            <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleRemoveCustomerFile(file.uid)} />
-                                        </Tooltip>
+                                        <div style={{ display: 'flex', gap: 4 }}>
+                                            <Tooltip title="Xem">
+                                                <Button type="text" size="small" icon={<EyeOutlined />} onClick={() => handlePreview(file.preview)} />
+                                            </Tooltip>
+                                            <Tooltip title="Xóa">
+                                                <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleRemoveCustomerFile(file.uid)} />
+                                            </Tooltip>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                        </>
                     )}
                 </Form.Item>
 
