@@ -1,104 +1,89 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { bucket, db, getDropboxClient } from './_config';
 
+const CHUNK_SIZE = 4 * 1024 * 1024;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method Not Allowed' });
-    }
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
     const { firebasePath, dropboxPath, orderId, readableId, targetField } = req.body;
-
-    if (!firebasePath || !dropboxPath || !orderId) {
-        return res.status(400).json({ error: 'Missing required fields' });
-    }
+    if (!firebasePath || !dropboxPath || !orderId) return res.status(400).json({ error: 'Missing required fields' });
 
     try {
-        console.log(`[SYNC] Starting sync for Order #${readableId || orderId}`);
+        console.log(`[SYNC] Streaming Order #${readableId || orderId}`);
 
-        // 1. Download file from Firebase Storage
-        if (!bucket) {
-            throw new Error("Firebase Storage bucket not initialized (Check server logs/env vars)");
-        }
+        if (!bucket) throw new Error("Firebase Storage bucket not initialized");
         const file = bucket.file(firebasePath);
         const [exists] = await file.exists();
-        if (!exists) {
-            return res.status(404).json({ error: 'File not found in Firebase Storage' });
-        }
+        if (!exists) return res.status(404).json({ error: 'File not found' });
 
-        const [buffer] = await file.download();
-
-        // 2. Upload to Dropbox
-        // Fetch Tokens from Firestore if not in Env
+        // Dropbox Auth
         let dropboxToken = process.env.DROPBOX_ACCESS_TOKEN;
         let appKey = process.env.DROPBOX_APP_KEY;
         let appSecret = process.env.DROPBOX_APP_SECRET;
         let refreshToken = process.env.DROPBOX_REFRESH_TOKEN;
 
-        if (!dropboxToken || !refreshToken) { // If any key is missing, check DB
-            console.log("[SYNC] Authorization: Fetching Dropbox Config from Firestore...");
+        if (!dropboxToken || !refreshToken) {
             const settingsDoc = await db.collection('settings').doc('system').get();
             if (settingsDoc.exists) {
                 const data = settingsDoc.data();
                 const dbxConfig = data?.dropbox || {};
-
-                if (!dropboxToken) dropboxToken = dbxConfig.access_token || dbxConfig.accessToken || data.dropbox_token;
-                if (!appKey) appKey = dbxConfig.app_key;
-                if (!appSecret) appSecret = dbxConfig.app_secret;
-                if (!refreshToken) refreshToken = dbxConfig.refresh_token;
+                dropboxToken = dropboxToken || dbxConfig.access_token || dbxConfig.accessToken || data.dropbox_token;
+                appKey = appKey || dbxConfig.app_key;
+                appSecret = appSecret || dbxConfig.app_secret;
+                refreshToken = refreshToken || dbxConfig.refresh_token;
             }
         }
 
-        if (!dropboxToken) {
-            throw new Error("Dropbox Access Token not found in Env or Firestore");
+        if (!dropboxToken) throw new Error("Dropbox Token not found");
+
+        const dbx = getDropboxClient({ accessToken: dropboxToken, clientId: appKey, clientSecret: appSecret, refreshToken: refreshToken });
+
+        // Streaming Upload
+        let sessionId = '';
+        let offset = 0;
+        const readStream = file.createReadStream();
+        let buffer = Buffer.alloc(0);
+
+        for await (const chunk of readStream) {
+            buffer = Buffer.concat([buffer, chunk]);
+            if (buffer.length >= CHUNK_SIZE) {
+                if (!sessionId) {
+                    const start = await dbx.filesUploadSessionStart({ close: false, contents: buffer });
+                    sessionId = start.result.session_id;
+                } else {
+                    await dbx.filesUploadSessionAppendV2({ cursor: { session_id: sessionId, offset }, close: false, contents: buffer });
+                }
+                offset += buffer.length;
+                buffer = Buffer.alloc(0);
+            }
         }
 
-        const dbx = getDropboxClient({
-            accessToken: dropboxToken,
-            clientId: appKey,
-            clientSecret: appSecret,
-            refreshToken: refreshToken
-        });
-        console.log(`[SYNC] Uploading to Dropbox: ${dropboxPath}`);
+        if (!sessionId) {
+            await dbx.filesUpload({ path: dropboxPath, contents: buffer, mode: { '.tag': 'overwrite' } });
+        } else {
+            await dbx.filesUploadSessionFinish({ cursor: { session_id: sessionId, offset }, commit: { path: dropboxPath, mode: { '.tag': 'overwrite' }, mute: false }, contents: buffer });
+        }
 
-        const uploadResult = await dbx.filesUpload({
-            path: dropboxPath,
-            contents: buffer,
-            mode: { '.tag': 'overwrite' } // overwrite if exists
-        });
-
-        // 3. Create Shared Link (Raw)
+        // Shared Link
         let shareLink = '';
         try {
-            const share = await dbx.sharingCreateSharedLinkWithSettings({
-                path: uploadResult.result.path_display || dropboxPath
-            });
+            const share = await dbx.sharingCreateSharedLinkWithSettings({ path: dropboxPath });
             shareLink = share.result.url.replace('?dl=0', '?raw=1');
         } catch (e: any) {
-            // Check for shared_link_already_exists error
             if (e.error?.['.tag'] === 'shared_link_already_exists' || e.error?.error?.['.tag'] === 'shared_link_already_exists') {
-                // Fetch existing
-                const links = await dbx.sharingListSharedLinks({ path: uploadResult.result.path_display || dropboxPath });
-                if (links.result.links.length > 0) {
-                    shareLink = links.result.links[0].url.replace('?dl=0', '?raw=1');
-                }
-            } else {
-                console.warn("[SYNC] Warning: Could not create shared link, continuing...", e);
+                const links = await dbx.sharingListSharedLinks({ path: dropboxPath });
+                if (links.result.links.length > 0) shareLink = links.result.links[0].url.replace('?dl=0', '?raw=1');
             }
         }
 
-        // 4. Update Firestore with Dropbox URL
+        // Firestore Update
         const updateData: any = { dropboxReady: true };
-
-        // Critical: Only update the main 'dropboxUrl' (Mockup Backup) if this sync was for the Mockup
-        // or if the path explicitly indicates it's a mockup folder.
-        // This prevents 'Customer Files' or other uploads from overwriting the main dashboard image backup.
-        if (targetField === 'mockupUrl' || dropboxPath.includes('/Mockup/')) {
-            updateData.dropboxUrl = shareLink;
-        }
-
+        if (targetField === 'mockupUrl' || dropboxPath.includes('/Mockup/')) updateData.dropboxUrl = shareLink;
         await db.collection('tasks').doc(orderId).update(updateData);
 
         return res.status(200).json({ success: true, dropboxUrl: shareLink });
+
     } catch (error: any) {
         console.error('[SYNC] Error:', error);
         return res.status(500).json({ error: error.message });

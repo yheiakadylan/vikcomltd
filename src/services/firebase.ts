@@ -201,13 +201,13 @@ export const getOrderLogs = async (taskId: string) => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
 };
 
-export const updateOrder = async (orderId: string, data: any) => {
+export const updateOrder = async (orderId: string, data: any, skipAutoLog: boolean = false) => {
     const orderRef = doc(db, 'tasks', orderId);
     await updateDoc(orderRef, data);
 
     // Automatic Logging
     const currentUser = auth.currentUser;
-    if (currentUser && data.status) {
+    if (!skipAutoLog && currentUser && data.status) {
         await addOrderLog(orderId, {
             actorId: currentUser.uid,
             actorName: currentUser.displayName || 'System',

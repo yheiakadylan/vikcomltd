@@ -159,11 +159,11 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
             await updateOrder(order.id, {
                 status: 'doing',
                 designerId: user.uid
-            });
+            }, true); // Use skipAutoLog
             await addOrderLog(order.id, {
                 action: 'status_change',
                 actorId: user.uid,
-                actorName: user.displayName || user.email || 'DS',
+                actorName: user.displayName || user.email?.split('@')[0] || 'DS', // Fallback to email prefix if needed
                 details: 'Claimed task'
             });
             message.success(t('taskDetail.actions.claimSuccess') || 'Claimed');
@@ -190,13 +190,13 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
             await updateOrder(order.id, {
                 status: 'need_fix',
                 description: newDesc
-            });
+            }, true); // Use skipAutoLog
 
             // Log with reason
             await addOrderLog(order.id, {
                 action: 'status_change',
                 actorId: user.uid,
-                actorName: user.displayName || 'CS',
+                actorName: user.displayName || user.email?.split('@')[0] || 'CS',
                 details: 'Requested fix',
                 content: `Reason: ${rejectReason}`
             });
@@ -216,11 +216,11 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
     const handleApprove = async () => {
         if (!order || !user) return;
         try {
-            await updateOrder(order.id, { status: 'done' });
+            await updateOrder(order.id, { status: 'done' }, true); // Use skipAutoLog
             await addOrderLog(order.id, {
                 action: 'status_change',
                 actorId: user.uid,
-                actorName: user.displayName || 'CS',
+                actorName: user.displayName || user.email?.split('@')[0] || 'CS',
                 details: 'Approved design'
             });
 
@@ -282,12 +282,12 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
             await updateOrder(order.id, {
                 status: 'in_review', // Move to review
                 designFiles: uploadedFiles
-            });
+            }, true); // Use skipAutoLog
 
             await addOrderLog(order.id, {
                 action: 'status_change',
                 actorId: user.uid,
-                actorName: user.displayName || 'DS',
+                actorName: user.displayName || user.email?.split('@')[0] || 'DS',
                 details: 'Submitted designs for review'
             });
 
@@ -332,7 +332,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
             await addOrderLog(order.id, {
                 action: 'comment',
                 actorId: user.uid,
-                actorName: user.displayName || 'User',
+                actorName: user.displayName || user.email?.split('@')[0] || 'User',
                 details: 'Commented',
                 content: comment,
                 attachments

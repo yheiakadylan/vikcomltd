@@ -56,6 +56,13 @@ const SmartImage: React.FC<SmartImageProps> = ({
             setImgLoading(false);
             setHasError(true);
         }
+
+        // Safety: Timeout to force stop loading if onLoad misses
+        const timer = setTimeout(() => {
+            setImgLoading(false);
+        }, 8000);
+
+        return () => clearTimeout(timer);
     }, [src, backupSrc]);
 
     const handleError = () => {
@@ -127,33 +134,34 @@ const SmartImage: React.FC<SmartImageProps> = ({
 
     return (
         <div style={{ position: 'relative', width, height, ...style }} className={className}>
-            {/* Skeleton Overlay while loading */}
+            {/* Skeleton Overlay */}
             {imgLoading && (
                 <div style={{
                     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                    zIndex: 1, background: '#f5f5f5',
+                    zIndex: 2, background: '#f5f5f5',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    pointerEvents: 'none'
+                    pointerEvents: 'none',
+                    transition: 'opacity 0.3s'
                 }}>
                     <Skeleton.Image active />
                 </div>
             )}
 
             <Image
+                key={displaySrc} // Critical: Force re-mount on src change to validly fire onLoad
                 src={displaySrc}
                 alt={alt || "Smart Image"}
-                width={width}
-                height={height}
-                style={{ objectFit: objectFitStyle, opacity: imgLoading ? 0 : 1, transition: 'opacity 0.3s', ...style }}
+                width="100%"
+                height="100%"
+                style={{ objectFit: objectFitStyle, display: 'block' }}
                 onError={handleError}
                 onLoad={handleLoad}
                 fallback={fallback}
                 preview={
                     preview ? (typeof preview === 'object' ? preview : {
-                        src: currentSrc // Preview usually wants full res?
+                        src: currentSrc
                     }) : false
                 }
-                // We handle placeholder manually via overlay to control styling better
                 placeholder={null}
             />
         </div>
