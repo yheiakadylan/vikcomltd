@@ -48,6 +48,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                         style={{ borderRadius: 8 }}
                         placeholder={<div style={{ width: 80, height: 80, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin /></div>}
                         updatedAt={order.updatedAt}
+                        fit="contain"
                     />
                 ) : (
                     <div style={{ width: '100%', height: '100%', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

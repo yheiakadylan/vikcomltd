@@ -60,6 +60,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                             updatedAt={order.updatedAt}
                             fallback={`https://placehold.co/400x300/e6e6e6/a3a3a3?text=${t('dashboard.card.noImage')}`}
                             preview={false}
+                            fit="outside"
                         />
                     ) : (
                         <div className="text-gray-300"><CloudUploadOutlined style={{ fontSize: 32, color: '#ccc' }} /></div>

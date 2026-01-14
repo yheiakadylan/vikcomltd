@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Image } from 'antd';
+import { Image, Skeleton, Button } from 'antd';
+import { FileImageOutlined, LinkOutlined } from '@ant-design/icons';
 import { getOptimizedImageUrl } from '../../utils/image';
 
 interface SmartImageProps {
@@ -11,7 +12,7 @@ interface SmartImageProps {
     style?: React.CSSProperties;
     className?: string;
     preview?: boolean | object;
-    fallback?: string;
+    fallback?: string; // This is for Ant Design Image fallback URL
     placeholder?: React.ReactNode;
     updatedAt?: string | number | Date;
     fit?: 'cover' | 'contain' | 'inside' | 'outside';
@@ -27,20 +28,33 @@ const SmartImage: React.FC<SmartImageProps> = ({
     className,
     preview = true,
     fallback = "https://placehold.co/400x300?text=No+Image",
-    placeholder,
     updatedAt,
     fit = 'cover'
 }) => {
     const [currentSrc, setCurrentSrc] = useState<string | undefined>(src);
     const [hasError, setHasError] = useState(false);
+    const [imgLoading, setImgLoading] = useState(true);
+
+    // Filter out 'placeholder' from props if not used, or pass it to Image if intended.
+    // Since we use custom Skeleton overlay, we ignore 'placeholder' prop here.
+
+    // Map custom fit to valid CSS object-fit
+    const objectFitStyle: React.CSSProperties['objectFit'] = (fit === 'inside' || fit === 'contain') ? 'contain' : 'cover';
 
     useEffect(() => {
         // Reset state when src props change
         if (src) {
             setCurrentSrc(src);
             setHasError(false);
+            setImgLoading(true);
         } else if (backupSrc) {
             setCurrentSrc(backupSrc);
+            setHasError(false);
+            setImgLoading(true);
+        } else {
+            // If NO src and NO backupSrc is provided
+            setImgLoading(false);
+            setHasError(true);
         }
     }, [src, backupSrc]);
 
@@ -48,8 +62,16 @@ const SmartImage: React.FC<SmartImageProps> = ({
         if (!hasError && currentSrc === src && backupSrc) {
             console.log("SmartImage: Primary src failed, switching to backup.");
             setCurrentSrc(backupSrc);
+            // Don't stop loading yet, allow backup to try loading
+        } else {
+            console.log("SmartImage: All sources failed.");
             setHasError(true);
+            setImgLoading(false); // Stop loading if error confirms
         }
+    };
+
+    const handleLoad = () => {
+        setImgLoading(false);
     };
 
     // Optimization Logic
@@ -58,30 +80,83 @@ const SmartImage: React.FC<SmartImageProps> = ({
     const displaySrc = shouldOptimize
         ? getOptimizedImageUrl(
             currentSrc,
-            typeof width === 'number' ? width : 400,
-            typeof height === 'number' ? height : 300,
+            typeof width === 'number' ? width : 800,
+            typeof height === 'number' ? height : 600,
             fit,
             updatedAt
         )
         : currentSrc;
 
+    // Custom Error UI
+    if (hasError) {
+        return (
+            <div
+                style={{
+                    width: width || '100%',
+                    height: height || '100%',
+                    background: '#fff1f0',
+                    border: '1px dashed #ffccc7',
+                    borderRadius: 8,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#ff4d4f',
+                    gap: 8,
+                    padding: 16,
+                    ...style
+                }}
+                className={className}
+            >
+                <FileImageOutlined style={{ fontSize: 24 }} />
+                <span style={{ fontSize: 13, fontWeight: 500 }}>Unable to load image</span>
+                {currentSrc && (
+                    <Button
+                        size="small"
+                        type="dashed"
+                        danger
+                        icon={<LinkOutlined />}
+                        onClick={() => window.open(currentSrc, '_blank')}
+                    >
+                        Open Original
+                    </Button>
+                )}
+            </div>
+        );
+    }
+
     return (
-        <Image
-            src={displaySrc}
-            alt={alt || "Smart Image"}
-            width={width}
-            height={height}
-            style={{ objectFit: 'cover', ...style }}
-            className={className}
-            onError={handleError}
-            fallback={fallback}
-            placeholder={placeholder}
-            preview={
-                preview ? (typeof preview === 'object' ? preview : {
-                    src: currentSrc // Preview usually wants full res?
-                }) : false
-            }
-        />
+        <div style={{ position: 'relative', width, height, ...style }} className={className}>
+            {/* Skeleton Overlay while loading */}
+            {imgLoading && (
+                <div style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                    zIndex: 1, background: '#f5f5f5',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    pointerEvents: 'none'
+                }}>
+                    <Skeleton.Image active />
+                </div>
+            )}
+
+            <Image
+                src={displaySrc}
+                alt={alt || "Smart Image"}
+                width={width}
+                height={height}
+                style={{ objectFit: objectFitStyle, opacity: imgLoading ? 0 : 1, transition: 'opacity 0.3s', ...style }}
+                onError={handleError}
+                onLoad={handleLoad}
+                fallback={fallback}
+                preview={
+                    preview ? (typeof preview === 'object' ? preview : {
+                        src: currentSrc // Preview usually wants full res?
+                    }) : false
+                }
+                // We handle placeholder manually via overlay to control styling better
+                placeholder={null}
+            />
+        </div>
     );
 };
 

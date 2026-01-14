@@ -288,8 +288,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                 action: 'status_change',
                 actorId: user.uid,
                 actorName: user.displayName || 'DS',
-                details: 'Submitted designs for review',
-                attachments: uploadedFiles.map(f => ({ name: f.name, link: f.link }))
+                details: 'Submitted designs for review'
             });
 
             message.success('Submitted');
@@ -395,13 +394,14 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
             <Row gutter={24}>
                 <Col span={9}>
                     {/* Mockup Display */}
-                    <div style={{ marginBottom: 24, borderRadius: 12, overflow: 'hidden', border: '1px solid #f0f0f0', position: 'relative' }}>
+                    <div style={{ marginBottom: 24, borderRadius: 12, overflow: 'hidden', border: '1px solid #f0f0f0', position: 'relative', minHeight: '400px', background: '#fafafa' }}>
                         {order?.mockupUrl ? (
                             <SmartImage
                                 src={order.mockupUrl}
                                 backupSrc={order.dropboxUrl}
                                 alt="Mockup"
                                 width="100%"
+                                height={400}
                                 style={{ objectFit: 'contain', display: 'block' }}
                                 preview={{
                                     src: order.mockupUrl // SmartImage will fallback to currentSrc
@@ -410,7 +410,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                 fit="inside"
                             />
                         ) : (
-                            <div style={{ height: 200, background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc' }}>
+                            <div style={{ height: 400, background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc' }}>
                                 {t('taskDetail.mockup.noMockup')}
                             </div>
                         )}
