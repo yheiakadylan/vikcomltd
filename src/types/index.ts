@@ -82,3 +82,19 @@ export interface OrderLog {
     attachments?: FileAttachment[];
     createdAt?: any;
 }
+
+// Sync Queue for Dropbox (Persistent Queue System)
+export interface SyncQueueTask {
+    id?: string;
+    firebasePath: string;
+    dropboxPath: string;
+    orderId: string;
+    readableId?: string;
+    targetField?: string; // 'mockupUrl' | 'designFiles' | 'customerFiles'
+    status: 'pending' | 'processing' | 'success' | 'error';
+    retryCount: number;
+    createdAt: any; // Firestore Timestamp
+    syncedAt?: any;
+    updatedAt?: any;
+    errorLog?: string;
+}

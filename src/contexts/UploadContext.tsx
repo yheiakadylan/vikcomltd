@@ -2,7 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import type { UploadItem, UploadStatus } from '../types';
 import { uploadFileToStorage } from '../services/firebase';
 import { updateOrder } from '../services/firebase';
-import { arrayUnion } from 'firebase/firestore';
+import { arrayUnion, collection, addDoc } from 'firebase/firestore';
+import { db } from '../services/firebase'; // Import db instance
 import { notification } from 'antd';
 import { useLanguage } from './LanguageContext';
 import { translations } from '../utils/translations';
@@ -149,27 +150,29 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const firebaseUrl = await uploadFileToStorage(file, firebaseStoragePath);
             updateItemStatus(id, 'uploading', 50);
 
-            // 2. Trigger Background Sync to Dropbox (Cold Storage)
-            // Fire-and-forget (don't await strictly for success to show UI completion? OR await to ensure safety?)
-            // User Plan: "Gọi ngầm API /api/sync-dropbox (Fire-and-forget)" -> "Fire-and-forget" means don't block.
-            // asking Vercel API to sync.
-            fetch('/api/sync-dropbox', {
+            // 2. Add to Persistent Queue for Dropbox sync
+            const queueRef = await addDoc(collection(db, 'sync_queue'), {
+                firebasePath: firebaseStoragePath,
+                dropboxPath: dropboxPath,
+                orderId: orderId,
+                readableId: nextItem.readableId,
+                targetField: targetField,
+                status: 'pending',
+                retryCount: 0,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+
+            // 3. Trigger immediate processing (Fire-and-forget)
+            fetch('/api/process-queue', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    firebasePath: firebaseStoragePath,
-                    dropboxPath: dropboxPath,
-                    orderId: orderId,
-                    readableId: nextItem.readableId,
-                    targetField: targetField // IMPORTANT: To identify Mockup vs Customer Files
-                })
-            }).then(res => {
-                if (!res.ok) console.warn("Sync triggered but failed status:", res.status);
-            }).catch(err => console.error("Sync trigger error:", err));
+                body: JSON.stringify({ queueId: queueRef.id })
+            }).catch(err => console.warn('[Upload] Queue trigger failed, cron will retry:', err));
 
             updateItemStatus(id, 'uploading', 90);
 
-            // 3. Update Firestore with firebaseUrl
+            // 4. Update Firestore with firebaseUrl
             const attachment = {
                 name: file.name,
                 link: firebaseUrl, // Immediate access
