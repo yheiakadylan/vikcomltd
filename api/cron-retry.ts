@@ -170,12 +170,8 @@ async function processSyncTask(queueId: string, task: any) {
     }
     await db.collection('tasks').doc(task.orderId).update(updateData);
 
-    // Mark queue as success
-    await db.collection('sync_queue').doc(queueId).update({
-        status: 'success',
-        syncedAt: new Date(),
-        updatedAt: new Date()
-    });
+    // Delete queue task (no need to keep success records)
+    await db.collection('sync_queue').doc(queueId).delete();
 
-    console.log(`[CRON] Task ${queueId} synced successfully`);
+    console.log(`[CRON] Task ${queueId} synced successfully - Deleted from queue`);
 }

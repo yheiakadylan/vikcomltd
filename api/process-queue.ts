@@ -111,14 +111,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         await db.collection('tasks').doc(task.orderId).update(updateData);
 
-        // 7. Mark queue as success
-        await queueDoc.ref.update({
-            status: 'success',
-            syncedAt: new Date(),
-            updatedAt: new Date()
-        });
+        // 7. Delete queue task (no need to keep success records)
+        await queueDoc.ref.delete();
 
-        console.log(`[QUEUE] Success: ${queueId}`);
+        console.log(`[QUEUE] Success: ${queueId} - Task deleted from queue`);
         return res.status(200).json({ success: true, dropboxUrl: shareLink });
 
     } catch (error: any) {
