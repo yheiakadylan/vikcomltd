@@ -404,10 +404,13 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                 height={400}
                                 style={{ objectFit: 'contain', display: 'block' }}
                                 preview={{
-                                    src: order.mockupUrl // SmartImage will fallback to currentSrc
+                                    src: order.mockupUrl
                                 }}
                                 updatedAt={order.updatedAt}
                                 fit="inside"
+                                taskStatus={order.status}
+                                taskUpdatedAt={order.updatedAt}
+                                dropboxPath={order.dropboxPath}
                             />
                         ) : (
                             <div style={{ height: 400, background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc' }}>

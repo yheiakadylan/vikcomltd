@@ -4,18 +4,22 @@ import { FileImageOutlined, LinkOutlined } from '@ant-design/icons';
 import { getOptimizedImageUrl } from '../../utils/image';
 
 interface SmartImageProps {
-    src?: string; // Expecting firebaseUrl or whatever is in the main field
-    backupSrc?: string; // Expecting dropboxUrl or backup link
+    src?: string; // Firebase URL (Hot Storage)
+    backupSrc?: string; // Dropbox URL (Cold Storage)
     alt?: string;
     width?: string | number;
     height?: string | number;
     style?: React.CSSProperties;
     className?: string;
     preview?: boolean | object;
-    fallback?: string; // This is for Ant Design Image fallback URL
+    fallback?: string;
     placeholder?: React.ReactNode;
     updatedAt?: string | number | Date;
     fit?: 'cover' | 'contain' | 'inside' | 'outside';
+    // Cost Optimization: Prioritize Dropbox for old/completed tasks
+    taskStatus?: string; // 'done' | 'in_review' | etc.
+    taskUpdatedAt?: string | number | Date; // Task last update time
+    dropboxPath?: string; // For fallback UI
 }
 
 const SmartImage: React.FC<SmartImageProps> = ({
@@ -29,11 +33,40 @@ const SmartImage: React.FC<SmartImageProps> = ({
     preview = true,
     fallback = "https://placehold.co/400x300?text=No+Image",
     updatedAt,
-    fit = 'cover'
+    fit = 'cover',
+    taskStatus,
+    taskUpdatedAt,
+    dropboxPath
 }) => {
-    const [currentSrc, setCurrentSrc] = useState<string | undefined>(src);
+    // Cost Optimization: Smart source selection
+    const shouldPrioritizeDropbox = () => {
+        if (!backupSrc) return false;
+
+        // Priority 1: Task is done -> Always use Dropbox
+        if (taskStatus === 'done') return true;
+
+        // Priority 2: Task in_review/need_fix for > 10 days -> Use Dropbox
+        if (taskStatus === 'in_review' || taskStatus === 'need_fix') {
+            if (taskUpdatedAt) {
+                const updatedDate = new Date(taskUpdatedAt);
+                const daysSinceUpdate = (Date.now() - updatedDate.getTime()) / (1000 * 60 * 60 * 24);
+                if (daysSinceUpdate > 10) return true;
+            }
+        }
+
+        return false;
+    };
+
+    const preferDropbox = shouldPrioritizeDropbox();
+    const initialSrc = preferDropbox ? backupSrc : (src || backupSrc);
+
+    const [currentSrc, setCurrentSrc] = useState<string | undefined>(initialSrc);
     const [hasError, setHasError] = useState(false);
     const [imgLoading, setImgLoading] = useState(true);
+    const [sourceType, setSourceType] = useState<'firebase' | 'dropbox' | 'fallback'>(preferDropbox ? 'dropbox' : 'firebase');
+
+    // Memoize to prevent recalculation on every render
+    const preferDropboxMemo = React.useMemo(() => shouldPrioritizeDropbox(), [backupSrc, taskStatus, taskUpdatedAt]);
 
     // Filter out 'placeholder' from props if not used, or pass it to Image if intended.
     // Since we use custom Skeleton overlay, we ignore 'placeholder' prop here.
@@ -42,38 +75,51 @@ const SmartImage: React.FC<SmartImageProps> = ({
     const objectFitStyle: React.CSSProperties['objectFit'] = (fit === 'inside' || fit === 'contain') ? 'contain' : 'cover';
 
     useEffect(() => {
-        // Reset state when src props change
-        if (src) {
+        // Use memoized value
+        const shouldUseDropbox = preferDropboxMemo;
+
+        if (shouldUseDropbox && backupSrc) {
+            setCurrentSrc(backupSrc);
+            setSourceType('dropbox');
+            setHasError(false);
+            setImgLoading(true);
+        } else if (src) {
             setCurrentSrc(src);
+            setSourceType('firebase');
             setHasError(false);
             setImgLoading(true);
         } else if (backupSrc) {
             setCurrentSrc(backupSrc);
+            setSourceType('dropbox');
             setHasError(false);
             setImgLoading(true);
         } else {
-            // If NO src and NO backupSrc is provided
             setImgLoading(false);
             setHasError(true);
         }
 
-        // Safety: Timeout to force stop loading if onLoad misses
+        // Safety timeout
         const timer = setTimeout(() => {
             setImgLoading(false);
         }, 8000);
 
         return () => clearTimeout(timer);
-    }, [src, backupSrc]);
+    }, [src, backupSrc, preferDropboxMemo]); // Only re-run when actual URLs or priority changes
 
     const handleError = () => {
-        if (!hasError && currentSrc === src && backupSrc) {
-            console.log("SmartImage: Primary src failed, switching to backup.");
+        // Fallback chain: Try next source
+        if (sourceType === 'dropbox' && src) {
+            console.log("SmartImage: Dropbox failed, trying Firebase...");
+            setCurrentSrc(src);
+            setSourceType('firebase');
+        } else if (sourceType === 'firebase' && backupSrc && currentSrc !== backupSrc) {
+            console.log("SmartImage: Firebase failed, trying Dropbox...");
             setCurrentSrc(backupSrc);
-            // Don't stop loading yet, allow backup to try loading
+            setSourceType('dropbox');
         } else {
             console.log("SmartImage: All sources failed.");
             setHasError(true);
-            setImgLoading(false); // Stop loading if error confirms
+            setImgLoading(false);
         }
     };
 
@@ -81,20 +127,22 @@ const SmartImage: React.FC<SmartImageProps> = ({
         setImgLoading(false);
     };
 
-    // Optimization Logic
-    const shouldOptimize = currentSrc && (currentSrc.startsWith('http') || currentSrc.startsWith('https'));
+    // Optimization Logic - Memoized to prevent recalculation
+    const displaySrc = React.useMemo(() => {
+        const shouldOptimize = currentSrc && (currentSrc.startsWith('http') || currentSrc.startsWith('https'));
 
-    const displaySrc = shouldOptimize
-        ? getOptimizedImageUrl(
-            currentSrc,
-            typeof width === 'number' ? width : 800,
-            typeof height === 'number' ? height : 600,
-            fit,
-            updatedAt
-        )
-        : currentSrc;
+        return shouldOptimize
+            ? getOptimizedImageUrl(
+                currentSrc,
+                typeof width === 'number' ? width : 800,
+                typeof height === 'number' ? height : 600,
+                fit,
+                updatedAt
+            )
+            : currentSrc;
+    }, [currentSrc, width, height, fit, updatedAt]);
 
-    // Custom Error UI
+    // Custom Error UI with Dropbox path fallback
     if (hasError) {
         return (
             <div
@@ -117,17 +165,34 @@ const SmartImage: React.FC<SmartImageProps> = ({
             >
                 <FileImageOutlined style={{ fontSize: 24 }} />
                 <span style={{ fontSize: 13, fontWeight: 500 }}>Unable to load image</span>
-                {currentSrc && (
-                    <Button
-                        size="small"
-                        type="dashed"
-                        danger
-                        icon={<LinkOutlined />}
-                        onClick={() => window.open(currentSrc, '_blank')}
-                    >
-                        Open Original
-                    </Button>
+                {dropboxPath && (
+                    <div style={{ fontSize: 11, color: '#999', textAlign: 'center', marginTop: 4 }}>
+                        Path: {dropboxPath}
+                    </div>
                 )}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    {backupSrc && (
+                        <Button
+                            size="small"
+                            type="dashed"
+                            icon={<LinkOutlined />}
+                            onClick={() => window.open(backupSrc, '_blank')}
+                        >
+                            Dropbox
+                        </Button>
+                    )}
+                    {src && (
+                        <Button
+                            size="small"
+                            type="dashed"
+                            danger
+                            icon={<LinkOutlined />}
+                            onClick={() => window.open(src, '_blank')}
+                        >
+                            Firebase
+                        </Button>
+                    )}
+                </div>
             </div>
         );
     }

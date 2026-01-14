@@ -61,6 +61,9 @@ const OrderCard: React.FC<OrderCardProps> = ({
                             fallback={`https://placehold.co/400x300/e6e6e6/a3a3a3?text=${t('dashboard.card.noImage')}`}
                             preview={false}
                             fit="outside"
+                            taskStatus={order.status}
+                            taskUpdatedAt={order.updatedAt}
+                            dropboxPath={order.dropboxPath}
                         />
                     ) : (
                         <div className="text-gray-300"><CloudUploadOutlined style={{ fontSize: 32, color: '#ccc' }} /></div>
@@ -131,4 +134,5 @@ const OrderCard: React.FC<OrderCardProps> = ({
     );
 };
 
+// Memoize to prevent re-render when other tasks update
 export default React.memo(OrderCard);

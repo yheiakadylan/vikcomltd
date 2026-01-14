@@ -49,6 +49,9 @@ const OrderRow: React.FC<OrderRowProps> = ({
                         placeholder={<div style={{ width: 80, height: 80, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin /></div>}
                         updatedAt={order.updatedAt}
                         fit="contain"
+                        taskStatus={order.status}
+                        taskUpdatedAt={order.updatedAt}
+                        dropboxPath={order.dropboxPath}
                     />
                 ) : (
                     <div style={{ width: '100%', height: '100%', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -91,4 +94,5 @@ const OrderRow: React.FC<OrderRowProps> = ({
     );
 };
 
+// Memoize to prevent re-render when other tasks update
 export default React.memo(OrderRow);
