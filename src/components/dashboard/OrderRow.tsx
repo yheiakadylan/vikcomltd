@@ -1,10 +1,11 @@
 import React from 'react';
-import { getOptimizedImageUrl } from '../../utils/image';
-import { Button, Popconfirm, Tag, Image } from 'antd';
-import { CloudUploadOutlined, FireFilled, DeleteOutlined, ClockCircleOutlined } from '@ant-design/icons';
+// import { getOptimizedImageUrl } from '../../utils/image';
+import { Button, Popconfirm, Tag, Spin } from 'antd';
+import { CloudUploadOutlined, FireFilled, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useLanguage } from '../../contexts/LanguageContext';
 import type { Order } from '../../types';
+import SmartImage from '../common/SmartImage';
 
 interface OrderRowProps {
     order: Order;
@@ -29,7 +30,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
     return (
         <div
             key={order.id}
-            className={`cinematic-row-card ${isUrgent ? 'border-red-500 bg-red-50' : ''}`}
+            className={`cinematic-row-card ${isUrgent ? 'border-red-500 bg-red-50' : ''} `}
             style={{ borderColor: isUrgent ? '#f5222d' : undefined }}
             onClick={() => onOpenDetail(order)}
         >
@@ -37,18 +38,16 @@ const OrderRow: React.FC<OrderRowProps> = ({
                 style={{ width: 80, height: 80, borderRadius: 8, overflow: 'hidden', marginRight: 16, flexShrink: 0 }}
             >
                 {order.mockupUrl ? (
-                    <Image
-                        src={getOptimizedImageUrl(order.mockupUrl, 160, 160)}
+                    <SmartImage
+                        src={order.mockupUrl}
+                        backupSrc={order.dropboxUrl}
                         preview={false}
-                        width="100%"
-                        height="100%"
-                        style={{ objectFit: 'cover' }}
-                        fallback={`https://placehold.co/80x80/e6e6e6/a3a3a3?text=${t('dashboard.card.imageText')}`}
-                        placeholder={
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', background: '#f5f5f5' }}>
-                                <ClockCircleOutlined style={{ fontSize: 16, color: '#ccc' }} spin />
-                            </div>
-                        }
+                        alt={order.title}
+                        width={80}
+                        height={80}
+                        style={{ borderRadius: 8 }}
+                        placeholder={<div style={{ width: 80, height: 80, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin /></div>}
+                        updatedAt={order.updatedAt}
                     />
                 ) : (
                     <div style={{ width: '100%', height: '100%', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

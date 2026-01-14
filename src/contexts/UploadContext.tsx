@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { UploadItem, UploadStatus } from '../types';
-import { uploadFileToDropbox } from '../services/dropbox';
+import { uploadFileToStorage } from '../services/firebase';
 import { updateOrder } from '../services/firebase';
 import { arrayUnion } from 'firebase/firestore';
 import { notification } from 'antd';
@@ -79,7 +79,7 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     updateOrder(oid, { status: 'in_review', updatedAt: new Date() })
                         .then(() => {
                             notification.success({
-                                message: `${translations[language].notifications.uploadSuccess.message}${readableId}`,
+                                title: `${translations[language].notifications.uploadSuccess.message}${readableId}`,
                                 description: translations[language].notifications.uploadSuccess.description,
                                 placement: 'bottomRight',
                                 duration: 5
@@ -89,7 +89,7 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         .catch(err => {
                             console.error("Auto Submit Failed", err);
                             notification.error({
-                                message: `${translations[language].notifications.uploadError.message}${readableId}`,
+                                title: `${translations[language].notifications.uploadError.message}${readableId}`,
                                 description: translations[language].notifications.uploadError.description,
                                 duration: 5
                             });
@@ -97,7 +97,7 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     return; // Skip standard notification
                 } else if (action === 'notify_creation') {
                     notification.success({
-                        message: `${translations[language].notifications.createTaskSuccess.message}${readableId}`,
+                        title: `${translations[language].notifications.createTaskSuccess.message}${readableId}`,
                         description: translations[language].notifications.createTaskSuccess.description,
                         placement: 'bottomRight',
                         duration: 5
@@ -109,7 +109,7 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (!notifiedOrdersRef.current.has(oid)) {
                     // Standard Notification (No Action Button)
                     notification.success({
-                        message: `${translations[language].notifications.uploadComplete.message}${readableId}`,
+                        title: `${translations[language].notifications.uploadComplete.message}${readableId}`,
                         description: translations[language].notifications.uploadComplete.description,
                         placement: 'bottomRight',
                         duration: 5,
@@ -140,38 +140,64 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateItemStatus(id, 'uploading', 10);
 
         try {
-            const result = await uploadFileToDropbox(file, dropboxPath);
+            // 1. Upload to Firebase Storage (Hot Storage)
+            // User Request: "tổ chức thư mục của storage firebase giống tổ chức thư mục của dropbox"
+            // Dropbox Path: /{Team}/{Year}/{Month}/{ReadableID}/{FileName}
+            // We use the passed dropboxPath but remove leading slash for Firebase Storage consistency (optional but cleaner)
+            const firebaseStoragePath = dropboxPath.startsWith('/') ? dropboxPath.substring(1) : dropboxPath;
+
+            const firebaseUrl = await uploadFileToStorage(file, firebaseStoragePath);
+            updateItemStatus(id, 'uploading', 50);
+
+            // 2. Trigger Background Sync to Dropbox (Cold Storage)
+            // Fire-and-forget (don't await strictly for success to show UI completion? OR await to ensure safety?)
+            // User Plan: "Gọi ngầm API /api/sync-dropbox (Fire-and-forget)" -> "Fire-and-forget" means don't block.
+            // asking Vercel API to sync.
+            fetch('/api/sync-dropbox', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    firebasePath: firebaseStoragePath,
+                    dropboxPath: dropboxPath,
+                    orderId: orderId,
+                    readableId: nextItem.readableId,
+                    targetField: targetField // IMPORTANT: To identify Mockup vs Customer Files
+                })
+            }).then(res => {
+                if (!res.ok) console.warn("Sync triggered but failed status:", res.status);
+            }).catch(err => console.error("Sync trigger error:", err));
+
             updateItemStatus(id, 'uploading', 90);
 
-            // Update Firestore
+            // 3. Update Firestore with firebaseUrl
             const attachment = {
                 name: file.name,
-                link: result.url,
-                type: file.type
+                link: firebaseUrl, // Immediate access
+                type: file.type,
+                // optionally store backup path if known? 
+                // But sync-dropbox will update `dropboxReady` later.
             };
 
             const updateData: any = {};
+            // Save firebaseUrl for immediate display
             if (targetField === 'mockupUrl') {
-                updateData[targetField] = result.url;
+                updateData[targetField] = firebaseUrl;
+                // Also save backup path hint?
+                updateData['mockupDropboxPath'] = dropboxPath;
             } else {
                 updateData[targetField] = arrayUnion(attachment);
             }
 
+            // Mark as using hybrid storage
+            updateData['storageMethod'] = 'hybrid';
+
             await updateOrder(orderId, updateData);
 
-            updateItemStatus(id, 'success', 100, undefined, result.url);
+            updateItemStatus(id, 'success', 100, undefined, firebaseUrl);
         } catch (error: any) {
             console.error("Upload Error Context:", error);
 
-            if (error?.status === 429 || error?.message?.includes('429')) {
-                updateItemStatus(id, 'retrying', 0, "Rate Limit. Retrying in 5s...");
-                setTimeout(() => {
-                    updateItemStatus(id, 'pending');
-                    processingRef.current = false;
-                }, 5000);
-                return;
-            }
-
+            // Firebase Storage rarely gives 429 logic like Dropbox, but generic retry is fine.
             updateItemStatus(id, 'error', 0, error.message || "Upload Failed");
         } finally {
             if (queue.find(i => i.id === id)?.status !== 'retrying') {

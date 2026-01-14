@@ -1,18 +1,21 @@
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc, deleteDoc, addDoc, getCountFromServer, limit, startAfter, QueryDocumentSnapshot, runTransaction } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc, deleteDoc, addDoc, getCountFromServer, limit, startAfter, QueryDocumentSnapshot, runTransaction, writeBatch } from 'firebase/firestore';
+
+// ...
+
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getMessaging, isSupported } from "firebase/messaging";
 import type { Order, User } from '../types';
 
 // Firebase configuration - uses VITE_ prefix for client-side access
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 
@@ -64,6 +67,33 @@ export const saveSystemSettings = async (settings: any) => {
 
 
 export const deleteOrder = async (orderId: string) => {
+    // 1. Clean up Storage files (hot storage only)
+    // We call the server API to ensure it handles the prefixes correctly using server credentials or logic
+    // But since we are client-side, we can just call the endpoint.
+    try {
+        await fetch('/api/cleanup-storage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: orderId })
+        });
+    } catch (e) {
+        console.warn("Storage cleanup failed (might be empty or network error), proceeding to delete doc:", e);
+    }
+
+    // 2. Delete Logs Subcollection (Firestore does not auto-delete subcollections)
+    const logsRef = collection(db, 'tasks', orderId, 'logs');
+    const logsSnapshot = await getDocs(logsRef);
+
+    // Check if there are logs to delete
+    if (!logsSnapshot.empty) {
+        const batch = writeBatch(db);
+        logsSnapshot.docs.forEach((logDoc) => {
+            batch.delete(logDoc.ref);
+        });
+        await batch.commit();
+    }
+
+    // 3. Delete Firestore Document
     const orderRef = doc(db, 'tasks', orderId);
     await deleteDoc(orderRef);
 };
@@ -164,13 +194,11 @@ export const addOrderLog = async (taskId: string, logData: any) => {
     }
 };
 
-export const subscribeToLogs = (taskId: string, callback: (logs: any[]) => void) => {
+export const getOrderLogs = async (taskId: string) => {
     const logsRef = collection(db, 'tasks', taskId, 'logs');
     const q = query(logsRef, orderBy('createdAt', 'desc'));
-    return onSnapshot(q, (snapshot) => {
-        const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        callback(logs);
-    });
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
 };
 
 export const updateOrder = async (orderId: string, data: any) => {
@@ -223,4 +251,17 @@ export const claimOrder = async (orderId: string, userId: string) => {
         console.error("Transaction failed: ", e);
         throw e; // Propagate error to UI
     }
+};
+
+export const uploadFileToStorage = async (file: File, path: string) => {
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, file);
+    return await getDownloadURL(storageRef);
+};
+// ...
+
+export const checkOrderExists = async (readableId: string): Promise<boolean> => {
+    const q = query(collection(db, 'tasks'), where('readableId', '==', readableId));
+    const snapshot = await getCountFromServer(q);
+    return snapshot.data().count > 0;
 };

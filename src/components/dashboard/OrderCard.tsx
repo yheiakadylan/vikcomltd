@@ -1,9 +1,10 @@
 import React from 'react';
-import { getOptimizedImageUrl } from '../../utils/image';
-import { Card, Image, Button, Popconfirm, Tag } from 'antd';
+import { Card, Button, Popconfirm, Tag, Spin } from 'antd';
+import SmartImage from '../common/SmartImage';
 import { CloudUploadOutlined, FireFilled, DeleteOutlined, RollbackOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useLanguage } from '../../contexts/LanguageContext';
+// import { getOptimizedImageUrl } from '../../utils/image';
 import type { Order } from '../../types';
 
 interface OrderCardProps {
@@ -35,7 +36,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
         <Card
             key={order.id}
             hoverable
-            className={`mb-4 shadow-sm transition-all duration-300 ${isUrgent ? 'border-2 border-red-500 bg-red-50' : ''}`}
+            className={`mb - 4 shadow - sm transition - all duration - 300 ${isUrgent ? 'border-2 border-red-500 bg-red-50' : ''} `}
             style={{
                 borderColor: isUrgent ? '#f5222d' : '#d9d9d9',
                 backgroundColor: isUrgent ? '#fff1f0' : undefined,
@@ -48,36 +49,38 @@ const OrderCard: React.FC<OrderCardProps> = ({
                     style={{ height: 180, position: 'relative', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
                 >
                     {order.mockupUrl ? (
-                        <Image
-                            alt="mockup"
-                            src={getOptimizedImageUrl(order.mockupUrl, 400, 300)}
-                            preview={false}
-                            width="100%"
-                            height="100%"
-                            style={{ objectFit: 'cover' }}
+                        <SmartImage
+                            src={order.mockupUrl}
+                            backupSrc={order.dropboxUrl}
+                            alt={order.title}
+                            width={'100%'}
+                            height={200}
+                            style={{ borderTopLeftRadius: 12, borderTopRightRadius: 12 }}
+                            placeholder={<div style={{ width: '100%', height: 200, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin /></div>}
+                            updatedAt={order.updatedAt}
                             fallback={`https://placehold.co/400x300/e6e6e6/a3a3a3?text=${t('dashboard.card.noImage')}`}
-                            placeholder={
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', background: '#f5f5f5' }}>
-                                    <ClockCircleOutlined style={{ fontSize: 24, color: '#ccc' }} spin />
-                                </div>
-                            }
+                            preview={false}
                         />
                     ) : (
                         <div className="text-gray-300"><CloudUploadOutlined style={{ fontSize: 32, color: '#ccc' }} /></div>
                     )}
                     {isUrgent && <div style={{ position: 'absolute', top: 0, right: 0, background: '#f5222d', color: '#fff', fontSize: 12, fontWeight: 'bold', padding: '4px 8px', borderRadius: '0 0 0 8px' }}> 🔥</div>}
-                    {isCS && (
-                        <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }} onClick={e => e.stopPropagation()}>
-                            <Popconfirm title={t('dashboard.card.confirmDelete')} onConfirm={() => onDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText={t('common.delete')} cancelText={t('common.cancel')}>
-                                <Button shape="circle" size="small" danger icon={<DeleteOutlined />} style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} />
-                            </Popconfirm>
-                        </div>
-                    )}
-                </div>
+                    {
+                        isCS && (
+                            <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }} onClick={e => e.stopPropagation()}>
+                                <Popconfirm title={t('dashboard.card.confirmDelete')} onConfirm={() => onDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText={t('common.delete')} cancelText={t('common.cancel')}>
+                                    <Button shape="circle" size="small" danger icon={<DeleteOutlined />} style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} />
+                                </Popconfirm>
+                            </div>
+                        )
+                    }
+                </div >
             }
-            actions={[
-                (isDS && order.status === 'doing') ? <Button type="text" danger icon={<RollbackOutlined />} onClick={(e) => onOpenGiveBack(e, order)}>{t('dashboard.card.giveBack')}</Button> : null,
-            ].filter(Boolean) as React.ReactNode[]}
+            actions={
+                [
+                    (isDS && order.status === 'doing') ? <Button type="text" danger icon={<RollbackOutlined />} onClick={(e) => onOpenGiveBack(e, order)}>{t('dashboard.card.giveBack')}</Button> : null,
+                ].filter(Boolean) as React.ReactNode[]
+            }
         >
             <Card.Meta
                 title={
@@ -123,7 +126,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                     </div>
                 }
             />
-        </Card>
+        </Card >
     );
 };
 

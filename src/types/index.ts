@@ -43,6 +43,12 @@ export interface Order {
     customerFiles?: FileAttachment[]; // New: Customer uploaded files
     designFiles?: FileAttachment[]; // File thiết kế Final
 
+    // Storage & Optimization
+    dropboxUrl?: string; // Dropbox Link (Cold Storage)
+    mockupDropboxPath?: string; // Path on Dropbox just in case
+    storageCleaned?: boolean; // True if Firebase file deleted
+    storageMethod?: 'dropbox' | 'firebase' | 'hybrid';
+
     created_at?: any;
     updatedAt?: any;
 }
@@ -64,4 +70,15 @@ export interface UploadItem {
 
     // Result
     resultUrl?: string;
+}
+
+export interface OrderLog {
+    id?: string;
+    action: string;
+    actorId: string;
+    actorName: string;
+    details?: string;
+    content?: string;
+    attachments?: FileAttachment[];
+    createdAt?: any;
 }

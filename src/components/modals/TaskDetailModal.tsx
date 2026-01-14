@@ -1,177 +1,138 @@
 import React, { useState, useEffect } from 'react';
 import dayjs from 'dayjs';
-import { Modal, Form, Input, Button, Upload, message, Tag, Row, Col, Image, Divider, Tabs, Timeline } from 'antd';
-import { InboxOutlined, CloudUploadOutlined, FileOutlined, FileImageOutlined, DeleteOutlined, UserOutlined, ClockCircleOutlined, SendOutlined, PaperClipOutlined, SaveOutlined, RollbackOutlined, CheckOutlined } from '@ant-design/icons';
-import type { Order, FileAttachment, User } from '../../types';
-import { useAuth } from '../../contexts/AuthContext';
-import { updateOrder, getUsers, subscribeToLogs, addOrderLog, claimOrder } from '../../services/firebase';
-import { uploadFileToDropbox } from '../../services/dropbox';
+import { Modal, Form, Input, Button, Upload, message, Tag, Row, Col, Divider, Tabs, Timeline, Image } from 'antd';
+import {
+    CloudUploadOutlined,
+    UserOutlined,
+    ClockCircleOutlined,
+    FileOutlined,
+    SendOutlined,
+    PaperClipOutlined,
+    DeleteOutlined,
+    CheckOutlined,
+    InboxOutlined,
+    SaveOutlined,
+    RollbackOutlined,
+    FileImageOutlined,
+    DownloadOutlined,
+    EyeOutlined
+} from '@ant-design/icons';
 import { colors } from '../../theme/themeConfig';
-import { useUpload } from '../../contexts/UploadContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { getOptimizedImageUrl } from '../../utils/image';
+import { formatDropboxUrl, getOptimizedImageUrl } from '../../utils/image';
+import { generateDropboxPath } from '../../utils/order';
+import {
+    addOrderLog,
+    updateOrder,
+    uploadFileToStorage,
+    getOrderLogs,
+    getUsers
+} from '../../services/firebase';
+import type { Order, OrderLog, FileAttachment } from '../../types';
+import SmartImage from '../common/SmartImage';
 
-const { Dragger } = Upload;
 const { TextArea } = Input;
+const { Dragger } = Upload;
 
 interface TaskDetailModalProps {
-    order: Order | null;
     open: boolean;
+    order: Order | null;
     onCancel: () => void;
     onUpdate: () => void;
 }
 
-const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel, onUpdate }) => {
-    const { appUser } = useAuth();
+const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel, onUpdate }) => {
+    const { user, appUser } = useAuth();
     const { t } = useLanguage();
-    const [users, setUsers] = useState<User[]>([]);
     const [form] = Form.useForm();
-    const [isUrgent, setIsUrgent] = useState(false);
-    const [designFiles, setDesignFiles] = useState<FileAttachment[]>([]);
 
-    const [logs, setLogs] = useState<any[]>([]);
+    const [logs, setLogs] = useState<OrderLog[]>([]);
     const [comment, setComment] = useState('');
+    const [commentFiles, setCommentFiles] = useState<File[]>([]);
+    const [commentUploading, setCommentUploading] = useState(false);
+
+    // DS Work
+    const [designFiles, setDesignFiles] = useState<FileAttachment[]>([]);
+    const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+    const [dsUploading, setDsUploading] = useState(false);
+
+    // Users Map
+    const [usersMap, setUsersMap] = useState<Record<string, string>>({});
+
+    // Reject/Fix State
+    const [rejectModalOpen, setRejectModalOpen] = useState(false);
+    const [rejectReason, setRejectReason] = useState('');
+    const [rejectLoading, setRejectLoading] = useState(false);
+
+    // Urgent State
+    const [isUrgent, setIsUrgent] = useState(false);
 
     useEffect(() => {
-        if (open) {
-            getUsers().then(setUsers).catch(console.error);
-        }
+        const fetchUsersMap = async () => {
+            try {
+                const usersList = await getUsers();
+                const map: Record<string, string> = {};
+                usersList.forEach(u => {
+                    map[u.uid] = u.displayName || u.email || 'User';
+                });
+                setUsersMap(map);
+            } catch (e) {
+                console.error("Failed to fetch users for modal", e);
+            }
+        };
+        if (open) fetchUsersMap();
     }, [open]);
 
-    useEffect(() => {
-        if (order?.id) {
-            const unsub = subscribeToLogs(order.id, (data) => setLogs(data));
-            return () => unsub();
-        } else {
-            setLogs([]);
-        }
-    }, [order?.id]);
-
     const getUserName = (uid?: string | null) => {
-        if (!uid) return 'Unassigned';
-        const u = users.find(user => user.uid === uid);
-        return u ? u.displayName : 'Unknown';
+        if (!uid) return 'Unknown';
+        return usersMap[uid] || uid;
     };
 
-    const formatDropboxUrl = (url?: string) => {
-        if (!url) return '';
-        // Fix double question marks if present (repair existing bad data)
-        if (url.includes('?') && url.lastIndexOf('?') > url.indexOf('?')) {
-            return url.replace(/\?raw=1$/, '&raw=1');
-        }
-        if (url.includes('raw=1')) return url;
-        if (url.includes('dropbox.com')) {
-            const clean = url.replace('?dl=0', '').replace('&dl=0', '');
-            return clean + (clean.includes('?') ? '&' : '?') + 'raw=1';
-        }
-        return url;
-    };
 
-    // Check Role
-    const isCS = appUser?.role === 'CS' || appUser?.role === 'ADMIN';
-    const isDS = appUser?.role === 'DS';
+
+    const isCS = appUser?.role === 'CS' || appUser?.role === 'ADMIN'; // Changed 'admin' to 'ADMIN' based on types/index.ts Role type
+    const isDS = appUser?.role === 'DS' || appUser?.role === 'ADMIN';
     const isAdmin = appUser?.role === 'ADMIN';
 
-    // Roles & Permissions
-    const canDSWork = isAdmin || (isDS && (order?.status === 'doing' || order?.status === 'need_fix') && order?.designerId === appUser?.uid);
-    const canClaim = (isDS || isAdmin) && order?.status === 'new';
-    const canReview = (isCS || isAdmin) && order?.status === 'in_review';
-
-    // Handlers
-    const handleClaim = async () => {
-        if (!order || !appUser) return;
-        try {
-            await claimOrder(order.id, appUser.uid);
-            message.success('Đã nhận task thành công!');
-            onUpdate();
-            onCancel();
-        } catch (e: any) {
-            console.error(e);
-            message.error(e.message || 'Lỗi nhận task. Có thể người khác đã nhận rồi.');
-        }
-    };
-
-    const handleApprove = async () => {
-        if (!order) return;
-        try {
-            await updateOrder(order.id, { status: 'done', updatedAt: new Date() });
-            message.success('Đã duyệt task!');
-            onUpdate();
-            onCancel(); // Close modal on done
-        } catch (e) { message.error('Lỗi duyệt task'); }
-    };
-
-    const handleReject = async () => {
-        if (!order) return;
-        try {
-            await updateOrder(order.id, { status: 'need_fix', updatedAt: new Date() });
-            message.warning('Đã từ chối task (Need Fix)');
-            onUpdate();
-        } catch (e) { message.error('Lỗi từ chối task'); }
-    };
+    const canClaim = isDS && order?.status === 'new' && !order.designerId;
+    const canDSWork = isDS && (order?.designerId === user?.uid || isAdmin) && (order?.status === 'doing' || order?.status === 'need_fix');
+    const canReview = isCS && order?.status === 'in_review';
 
     useEffect(() => {
-        if (order) {
+        if (open && order) {
             form.setFieldsValue({
                 title: order.title,
                 sku: order.sku,
                 description: order.description,
+                category: order.category,
+                quantity: order.quantity,
+                deadline: order.deadline ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline) : null
             });
-            setIsUrgent(order.isUrgent);
             setDesignFiles(order.designFiles || []);
+            setStagedFiles([]);
+            setIsUrgent(order.isUrgent || false);
+            fetchLogs();
         }
-    }, [order, form]);
+    }, [open, order]);
 
     const handleUrgentToggle = async (checked: boolean) => {
         if ((!isCS && !isAdmin) || !order) return;
         setIsUrgent(checked);
         try {
             await updateOrder(order.id, { isUrgent: checked });
-            message.success(checked ? 'Đã bật chế độ GẤP 🔥' : 'Đã tắt chế độ Gấp');
+            message.success(checked ? t('taskDetail.header.urgentOn') : t('taskDetail.header.urgentOff'));
             onUpdate();
         } catch (error) {
-            message.error('Lỗi cập nhật');
+            message.error('Update failed');
             setIsUrgent(!checked); // Revert
         }
     };
 
-    const [stagedFiles, setStagedFiles] = useState<File[]>([]);
-    const { enqueue, registerCompletionAction } = useUpload();
-
-    const handleFileSelect = ({ file, onSuccess }: any) => {
-        // This is a workaround because beforeUpload returning false in Dragger sometimes doesn't play nice with custom UI
-        // But actually, we can just use customRequest to capture the file
-        setStagedFiles(prev => [...prev, file]);
-        setTimeout(() => onSuccess("ok"), 0);
-    };
-
-    const handleDSSubmit = async () => {
-        if (!order) return;
-
-        // 1. Enqueue Staged Files
-        if (stagedFiles.length > 0) {
-            enqueue(stagedFiles, order.id, 'designFiles', order.dropboxPath ? `${order.dropboxPath}/DesignFiles` : `/PINK_POD_SYSTEM/Unsorted/${order.readableId}/DesignFiles`, String(order.readableId));
-
-            // Register Auto Submit
-            registerCompletionAction(order.id, 'auto_submit');
-
-            message.success('Đã nộp bài! Hệ thống đang upload...');
-            onCancel();
-            return;
-        }
-
-        // 2. If no new files, but maybe just changing status (e.g. if files were uploaded previously or manually)
-        try {
-            await updateOrder(order.id, {
-                status: 'in_review',
-                designFiles: designFiles,
-                updatedAt: new Date(),
-            });
-            message.success('Nộp bài thành công!');
-            onUpdate();
-            onCancel();
-        } catch (error) {
-            message.error('Lỗi khi nộp bài');
+    const fetchLogs = async () => {
+        if (order) {
+            const data = await getOrderLogs(order.id);
+            setLogs(data);
         }
     };
 
@@ -179,83 +140,237 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
         if (!order) return;
         try {
             const values = await form.validateFields();
-            await updateOrder(order.id, {
-                ...values,
-                updatedAt: new Date(),
-            });
-            message.success('Cập nhật thông tin thành công!');
+            // Handle deadline if needed, but for now just basic fields
+            const updateData = { ...values };
+            if (updateData.deadline) delete updateData.deadline; // Don't update deadline generically yet to avoid type issues
+
+            await updateOrder(order.id, updateData);
+            message.success(t('taskDetail.info.updateSuccess') || 'Updated successfully');
             onUpdate();
         } catch (error) {
-            message.error('Lỗi cập nhật thông tin');
+            console.error(error);
+            message.error('Update failed');
         }
     };
 
+    const handleClaim = async () => {
+        if (!order || !user) return;
+        try {
+            await updateOrder(order.id, {
+                status: 'doing',
+                designerId: user.uid
+            });
+            await addOrderLog(order.id, {
+                action: 'status_change',
+                actorId: user.uid,
+                actorName: user.displayName || user.email || 'DS',
+                details: 'Claimed task'
+            });
+            message.success(t('taskDetail.actions.claimSuccess') || 'Claimed');
+            onUpdate();
+            onCancel();
+        } catch (error) {
+            message.error('Claim failed');
+        }
+    };
 
+    const handleReject = () => {
+        setRejectReason('');
+        setRejectModalOpen(true);
+    };
 
+    const submitReject = async () => {
+        if (!order || !user) return;
+        setRejectLoading(true);
+        try {
+            // Append FIX reason to description
+            const currentDesc = order.description || '';
+            const newDesc = `${currentDesc}\n\nFIX: ${rejectReason}`;
 
+            await updateOrder(order.id, {
+                status: 'need_fix',
+                description: newDesc
+            });
 
-    const [commentFiles, setCommentFiles] = useState<File[]>([]); // Store raw files
-    const [commentUploading, setCommentUploading] = useState(false);
+            // Log with reason
+            await addOrderLog(order.id, {
+                action: 'status_change',
+                actorId: user.uid,
+                actorName: user.displayName || 'CS',
+                details: 'Requested fix',
+                content: `Reason: ${rejectReason}`
+            });
 
-    const handleCommentFileUpload = (options: any) => {
-        const { file, onSuccess } = options;
-        // Just add to state, do not upload yet
-        setCommentFiles(prev => [...prev, file]);
-        setTimeout(() => onSuccess("Ok"), 0);
+            message.success('Requested fix');
+            onUpdate();
+            setRejectModalOpen(false);
+            onCancel(); // Close main modal
+        } catch (e) {
+            console.error(e);
+            message.error('Error submitting fix request');
+        } finally {
+            setRejectLoading(false);
+        }
+    };
+
+    const handleApprove = async () => {
+        if (!order || !user) return;
+        try {
+            await updateOrder(order.id, { status: 'done' });
+            await addOrderLog(order.id, {
+                action: 'status_change',
+                actorId: user.uid,
+                actorName: user.displayName || 'CS',
+                details: 'Approved design'
+            });
+
+            // Trigger cleanup (Fire and forget)
+            fetch('/api/cleanup-storage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId: order.id })
+            }).catch(e => console.error("Cleanup trigger failed", e));
+
+            message.success('Approved');
+            onUpdate();
+            onCancel();
+        } catch (e) { message.error('Error'); }
+    };
+
+    const handleFileSelect = ({ file, onSuccess }: any) => {
+        setStagedFiles(prev => [...prev, file]);
+        setTimeout(() => onSuccess("ok"), 0);
+    };
+
+    const handleDSSubmit = async () => {
+        if (!order || !user) return;
+        setDsUploading(true);
+        try {
+            let uploadedFiles: FileAttachment[] = [...designFiles];
+            // Upload staged files
+            for (const file of stagedFiles) {
+                // User Request: Match Firebase structure with Dropbox
+                // Use order.dropboxPath if available, otherwise generate consistent path
+                const baseDropboxPath = order.dropboxPath || generateDropboxPath(order as any);
+                const dropboxFilePath = `${baseDropboxPath}/Designs/${file.name}`; // Structure: .../Designs/FileName
+
+                // Remove leading slash for Firebase Storage
+                const firebasePath = dropboxFilePath.startsWith('/') ? dropboxFilePath.substring(1) : dropboxFilePath;
+
+                const url = await uploadFileToStorage(file, firebasePath);
+
+                // Trigger sync to Dropbox for redundancy
+                // Correctly passing firebasePath and dropboxPath
+                fetch('/api/sync-dropbox', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        firebasePath: firebasePath,
+                        dropboxPath: dropboxFilePath,
+                        orderId: order.id,
+                        readableId: order.readableId
+                    })
+                }).catch(e => console.error("Sync trigger failed", e));
+
+                uploadedFiles.push({
+                    name: file.name,
+                    link: url,
+                    type: 'image'
+                });
+            }
+
+            await updateOrder(order.id, {
+                status: 'in_review', // Move to review
+                designFiles: uploadedFiles
+            });
+
+            await addOrderLog(order.id, {
+                action: 'status_change',
+                actorId: user.uid,
+                actorName: user.displayName || 'DS',
+                details: 'Submitted designs for review',
+                attachments: uploadedFiles.map(f => ({ name: f.name, link: f.link }))
+            });
+
+            message.success('Submitted');
+            onUpdate();
+            onCancel();
+        } catch (e) {
+            console.error(e);
+            message.error('Submit failed');
+        } finally {
+            setDsUploading(false);
+        }
+    };
+
+    const handleCommentFileUpload = async ({ file, onSuccess }: any) => {
+        setCommentUploading(true);
+        try {
+            // Check if we upload immediately or wait? 
+            // Existing logic likely waited or uploaded. Let's just stage them for simplicity or upload now.
+            // The UI shows tags for `commentFiles`.
+            setCommentFiles(p => [...p, file]);
+            onSuccess("ok");
+        } catch (e) { message.error('Error'); }
+        finally { setCommentUploading(false); }
     };
 
     const handleSendComment = async () => {
-        if ((!comment.trim() && commentFiles.length === 0) || !order || !appUser) return;
+        if (!order || !user || (!comment && commentFiles.length === 0)) return;
         setCommentUploading(true);
         try {
-            const uploadedAttachments: FileAttachment[] = [];
+            const attachments: FileAttachment[] = [];
+            for (const file of commentFiles) {
+                // Match Dropbox structure for Comments as well
+                const baseDropboxPath = order.dropboxPath || generateDropboxPath(order as any);
+                const dropboxFilePath = `${baseDropboxPath}/Comments/${file.name}`;
+                const firebasePath = dropboxFilePath.startsWith('/') ? dropboxFilePath.substring(1) : dropboxFilePath;
 
-            // Upload files now
-            if (commentFiles.length > 0) {
-                for (const file of commentFiles) {
-                    try {
-                        // "lưu trong task đó với folder riêng là log" -> /Logs/
-                        const folderName = order.dropboxPath
-                            ? `${order.dropboxPath}/Logs/${dayjs().format('YYYYMMDD_HHmmss')}_${file.name}`
-                            : `/PINK_POD_SYSTEM/Unsorted/${order.readableId}/Logs/${file.name}`;
-
-                        const result = await uploadFileToDropbox(file, folderName);
-                        // @ts-ignore
-                        const linkUrl = result.url || result.preview_url || '#';
-                        // @ts-ignore
-                        const fileName = result.name || file.name;
-
-                        uploadedAttachments.push({ name: fileName, link: linkUrl });
-                    } catch (err: any) {
-                        console.error("Failed to upload: ", file.name, err);
-                        message.warning(`Không upload được file ${file.name}: ${err.message}`);
-                    }
-                }
+                const url = await uploadFileToStorage(file, firebasePath);
+                attachments.push({ name: file.name, link: url, type: 'file' });
             }
 
             await addOrderLog(order.id, {
                 action: 'comment',
+                actorId: user.uid,
+                actorName: user.displayName || 'User',
+                details: 'Commented',
                 content: comment,
-                attachments: uploadedAttachments,
-                actorId: appUser.uid,
-                actorName: appUser.displayName || 'Unknown'
+                attachments
             });
-
             setComment('');
             setCommentFiles([]);
-        } catch (e) {
-            console.error(e);
-            message.error('Lỗi gửi bình luận');
-        } finally {
-            setCommentUploading(false);
+            fetchLogs();
+            message.success('Sent');
+        } catch (e) { message.error('Failed to send'); }
+        finally { setCommentUploading(false); }
+    };
+
+
+    const handleDownload = async (e: React.MouseEvent, url: string, filename: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Handle Dropbox specially
+        if (url.includes('dropbox.com')) {
+            const dlUrl = url.replace('?dl=0', '') + '?dl=1';
+            window.open(dlUrl, '_self');
+            return;
         }
+
+        // Handle Firebase/Other via Proxy API to avoid CORS and force download
+        const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+
+        // Open in new tab which will trigger the 'attachment' download
+        window.open(proxyUrl, '_blank');
     };
 
     return (
         <Modal
             open={open}
             onCancel={onCancel}
-            width={1000}
+            width={1200}
+            footer={null}
             title={
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                     <span style={{ fontWeight: 800, fontSize: 18, color: colors.primaryPink }}>#{order?.readableId}</span>
@@ -264,36 +379,35 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                             <span style={{ fontSize: 14, color: isUrgent ? colors.urgentRed : '#bfbfbf', fontWeight: isUrgent ? 'bold' : 'normal' }}>
                                 {isUrgent ? t('taskDetail.header.urgent') : t('taskDetail.header.normal')}
                             </span>
-                            <Form.Item name="isUrgent" valuePropName="checked" noStyle>
-                                <div onClick={() => handleUrgentToggle(!isUrgent)} style={{ cursor: 'pointer' }}>
-                                    <Tag color={isUrgent ? 'red' : 'default'} style={{ margin: 0 }}>
-                                        {isUrgent ? 'ON' : 'OFF'}
-                                    </Tag>
-                                </div>
-                            </Form.Item>
+                            <div onClick={() => handleUrgentToggle(!isUrgent)} style={{ cursor: 'pointer' }}>
+                                <Tag color={isUrgent ? 'red' : 'default'} style={{ margin: 0 }}>
+                                    {isUrgent ? 'ON' : 'OFF'}
+                                </Tag>
+                            </div>
                         </div>
                     ) : (
                         isUrgent && <Tag color="red" style={{ marginLeft: 16 }}>{t('taskDetail.header.urgent')}</Tag>
                     )}
                 </div>
             }
-            footer={null}
-            className={`pinky-modal ${isUrgent ? 'urgent-modal-border' : ''}`}
-            style={{ top: 20 }}
+            centered
         >
             <Row gutter={24}>
-                {/* LEFT COLUMN: MOCKUP & FILES */}
                 <Col span={9}>
                     {/* Mockup Display */}
                     <div style={{ marginBottom: 24, borderRadius: 12, overflow: 'hidden', border: '1px solid #f0f0f0', position: 'relative' }}>
                         {order?.mockupUrl ? (
-                            <Image
-                                src={getOptimizedImageUrl(order.mockupUrl, 600, 600)}
+                            <SmartImage
+                                src={order.mockupUrl}
+                                backupSrc={order.dropboxUrl}
                                 alt="Mockup"
-                                style={{ width: '100%', objectFit: 'contain', display: 'block' }}
+                                width="100%"
+                                style={{ objectFit: 'contain', display: 'block' }}
                                 preview={{
-                                    src: formatDropboxUrl(order.mockupUrl)
+                                    src: order.mockupUrl // SmartImage will fallback to currentSrc
                                 }}
+                                updatedAt={order.updatedAt}
+                                fit="inside"
                             />
                         ) : (
                             <div style={{ height: 200, background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc' }}>
@@ -330,12 +444,15 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                             <div style={{ width: 48, height: 48, flexShrink: 0, border: '1px solid #f0f0f0', borderRadius: 4, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa' }}>
                                                 {isImage ? (
                                                     <Image
-                                                        src={fileUrl}
+                                                        src={getOptimizedImageUrl(fileUrl, 100, 100, 'cover')} // Thumbnail optimized
                                                         alt={file.name}
                                                         width={48}
                                                         height={48}
                                                         style={{ objectFit: 'cover' }}
                                                         fallback="https://placehold.co/48x48?text=Err"
+                                                        preview={{
+                                                            src: fileUrl // Original for preview
+                                                        }}
                                                     />
                                                 ) : (
                                                     <FileImageOutlined style={{ fontSize: 24, color: '#8c8c8c' }} />
@@ -346,9 +463,24 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                 <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={file.name}>
                                                     <span style={{ color: '#999', marginRight: 4, fontWeight: 700 }}>#{idx + 1}</span> {file.name}
                                                 </div>
-                                                <a href={file.link} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: colors.primaryPink }}>
-                                                    {t('taskDetail.customerFiles.downloadView')}
-                                                </a>
+                                            </div>
+
+                                            <div style={{ display: 'flex', gap: 6 }}>
+                                                <Button
+                                                    type="text"
+                                                    size="small"
+                                                    icon={<DownloadOutlined />}
+                                                    onClick={(e) => handleDownload(e, file.link, file.name)}
+                                                    title="Download"
+                                                />
+                                                <Button
+                                                    type="text"
+                                                    size="small"
+                                                    icon={<EyeOutlined />}
+                                                    href={file.link.includes('dropbox.com') ? file.link.replace('?dl=1', '') + '?dl=0' : file.link}
+                                                    target="_blank"
+                                                    title="View"
+                                                />
                                             </div>
                                         </div>
                                     );
@@ -358,10 +490,10 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                             )}
                         </div>
                     </div>
-                </Col>
+                </Col >
 
                 {/* RIGHT COLUMN: DETAILS & ACTION */}
-                <Col span={15}>
+                < Col span={15} >
                     <Tabs
                         defaultActiveKey="1"
                         className="task-tabs"
@@ -370,7 +502,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                 key: '1',
                                 label: <span><FileOutlined /> {t('taskDetail.tabs.details')}</span>,
                                 children: (
-                                    <>
+                                    <div style={{ height: 600, overflowY: 'auto', paddingRight: 8 }} >
                                         <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                             {(isAdmin || isDS) && (
                                                 <Tag color="purple" style={{ margin: 0 }}>
@@ -425,7 +557,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                         <Divider />
 
                                         {/* DS AREA */}
-                                        <div style={{
+                                        < div style={{
                                             background: (canDSWork || designFiles.length > 0) ? '#f6ffed' : '#f5f5f5',
                                             border: (canDSWork || designFiles.length > 0) ? '1px solid #b7eb8f' : '1px solid #d9d9d9',
                                             borderRadius: 12,
@@ -469,8 +601,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                         <Button
                                                             type="primary"
                                                             onClick={handleDSSubmit}
+                                                            loading={dsUploading}
                                                             style={{ background: colors.primaryPink, borderColor: colors.primaryPink, fontWeight: 600, boxShadow: '0 4px 14px rgba(235, 47, 150, 0.4)' }}
-                                                            disabled={stagedFiles.length === 0 && designFiles.length === 0}
+                                                            disabled={order?.status === 'need_fix' ? stagedFiles.length === 0 : (stagedFiles.length === 0 && designFiles.length === 0)}
                                                             icon={<SendOutlined />}
                                                         >
                                                             {t('taskDetail.actions.submit')}
@@ -558,12 +691,15 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                                 <div style={{ width: 48, height: 48, flexShrink: 0, border: '1px solid #f0f0f0', borderRadius: 4, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa' }}>
                                                                     {isImage ? (
                                                                         <Image
-                                                                            src={fileUrl}
+                                                                            src={getOptimizedImageUrl(fileUrl, 100, 100, 'cover')} // Thumbnail optimized
                                                                             alt={file.name}
                                                                             width={48}
                                                                             height={48}
                                                                             style={{ objectFit: 'cover' }}
                                                                             fallback="https://placehold.co/48x48?text=Err"
+                                                                            preview={{
+                                                                                src: fileUrl // Original for preview
+                                                                            }}
                                                                         />
                                                                     ) : (
                                                                         <FileOutlined style={{ fontSize: 24, color: '#1890ff' }} />
@@ -573,22 +709,36 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                                 <div style={{ flex: 1, overflow: 'hidden' }}>
                                                                     <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={file.name}>
                                                                         <span style={{ color: '#999', marginRight: 4, fontWeight: 700 }}>#{idx + 1}</span> {file.name}
-
                                                                     </div>
-                                                                    <a href={file.link} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: colors.primaryPink }}>
-                                                                        Download / View
-                                                                    </a>
                                                                 </div>
 
-                                                                {canDSWork && (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                                                     <Button
                                                                         type="text"
-                                                                        danger
                                                                         size="small"
-                                                                        icon={<DeleteOutlined />}
-                                                                        onClick={() => setDesignFiles(p => p.filter((_, i) => i !== idx))}
+                                                                        icon={<DownloadOutlined />}
+                                                                        onClick={(e) => handleDownload(e, file.link, file.name)}
+                                                                        title="Download"
                                                                     />
-                                                                )}
+                                                                    <Button
+                                                                        type="text"
+                                                                        size="small"
+                                                                        icon={<EyeOutlined />}
+                                                                        href={file.link.includes('dropbox.com') ? file.link.replace('?dl=1', '') + '?dl=0' : file.link}
+                                                                        target="_blank"
+                                                                        title="View"
+                                                                    />
+
+                                                                    {canDSWork && (
+                                                                        <Button
+                                                                            type="text"
+                                                                            danger
+                                                                            size="small"
+                                                                            icon={<DeleteOutlined />}
+                                                                            onClick={() => setDesignFiles(p => p.filter((_, i) => i !== idx))}
+                                                                        />
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         );
                                                     })
@@ -596,10 +746,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                                                     !canDSWork && <div style={{ color: '#ccc', textAlign: 'center', fontSize: 12 }}>Chưa có file. </div>
                                                 )}
                                             </div>
-
                                         </div>
-                                    </>
-                                )
+                                    </div>
+                                ),
                             },
                             {
                                 key: '2',
@@ -687,8 +836,25 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                             }
                         ]}
                     />
-                </Col>
-            </Row>
+                </Col >
+            </Row >
+            {/* Reject Reason Modal */}
+            <Modal
+                title="Yêu cầu sửa (Request Fix)"
+                open={rejectModalOpen}
+                onCancel={() => setRejectModalOpen(false)}
+                onOk={submitReject}
+                confirmLoading={rejectLoading}
+                okText="Gửi yêu cầu"
+                cancelText="Hủy"
+            >
+                <TextArea
+                    rows={4}
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    placeholder="Nhập lý do yêu cầu sửa"
+                />
+            </Modal>
         </Modal >
     );
 };

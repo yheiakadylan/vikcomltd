@@ -12,7 +12,8 @@ export const getOptimizedImageUrl = (
     url: string | undefined,
     width: number,
     height: number,
-    fit: 'cover' | 'contain' = 'cover'
+    fit: 'cover' | 'contain' | 'inside' | 'outside' = 'cover',
+    version?: string | number | Date // New param for cache busting
 ): string => {
     if (!url) return '';
 
@@ -29,8 +30,24 @@ export const getOptimizedImageUrl = (
     const encodedUrl = encodeURIComponent(directUrl);
 
     // 3. Construct wsrv.nl URL
-    // &we: webp (auto)
-    // &il: interlaced/progressive
     // &n: number of pages (for pdf/gif, usually 1 for static thumb)
-    return `https://wsrv.nl/?url=${encodedUrl}&w=${width}&h=${height}&fit=${fit}&we&il`;
+    let finalUrl = `https://wsrv.nl/?url=${encodedUrl}&w=${width}&h=${height}&fit=${fit}&we&il`;
+
+    // 4. Append Version for Cache Busting
+    if (version) {
+        // Simple timestamp format: YYYYMMDD_HHmm or just raw timestamp
+        const vParams = version instanceof Date ? version.getTime() : version;
+        finalUrl += `&v=${vParams}`;
+    }
+
+    return finalUrl;
+};
+
+export const formatDropboxUrl = (url?: string | null) => {
+    if (!url) return '';
+    if (url.includes('dropbox.com')) {
+        const clean = url.replace('?dl=0', '').replace('&dl=0', '').replace('?raw=1', '').replace('&raw=1', '');
+        return clean + (clean.includes('?') ? '&' : '?') + 'raw=1';
+    }
+    return url;
 };

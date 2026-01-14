@@ -4,6 +4,7 @@ import { AppstoreOutlined, BarsOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { usePersistedState } from '../hooks/usePersistedState'; // Import hook
 import type { Order, OrderStatus } from '../types';
 import { deleteOrder } from '../services/firebase';
 import { sortOrders } from '../utils/sortOrders';
@@ -31,7 +32,15 @@ const Dashboard: React.FC = () => {
 
     // Validate status or default to 'new'
     const validStatuses: OrderStatus[] = ['new', 'doing', 'in_review', 'need_fix', 'done'];
-    const activeTab: OrderStatus = (status && validStatuses.includes(status as OrderStatus)) ? (status as OrderStatus) : 'new';
+    // const activeTab: OrderStatus = (status && validStatuses.includes(status as OrderStatus)) ? (status as OrderStatus) : 'new'; // Original line
+    const [activeTab, setActiveTab] = usePersistedState<string>('activeTab', 'new'); // Persisted
+
+    // Sync URL status to activeTab
+    useEffect(() => {
+        if (status && validStatuses.includes(status as OrderStatus)) {
+            setActiveTab(status);
+        }
+    }, [status, setActiveTab]);
 
     // Pagination State
     const [page, setPage] = useState(1);
@@ -43,9 +52,11 @@ const Dashboard: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [searchText, setSearchText] = useState('');
     const [executedSearchTerm, setExecutedSearchTerm] = useState('');
+    const isAutoSwitchingTab = React.useRef(false);
 
     // View Mode State
-    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    // const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid'); // Original line
+    const [viewMode, setViewMode] = usePersistedState<'list' | 'grid'>('viewMode', 'grid'); // Persisted
 
     // Modal States
     const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
@@ -61,15 +72,16 @@ const Dashboard: React.FC = () => {
     useEffect(() => {
         setPage(1);
         pageCursors.current.clear();
-        // Don't reset executedSearchTerm here usually, but if tab changes, maybe we should?
-        // Let's keep search term active even on tab change? Or clear it?
-        // Usually tabs filtered by 'search' means global search ignores tabs.
-        // If we switch TABS, do we clear search?
-        // User behavior: if I search #1005, I see result. If I click "New", do I expect to see #1005 or New list?
-        // I expect to see New list. So clear search.
-        if (executedSearchTerm) {
-            setSearchText('');
-            setExecutedSearchTerm('');
+
+        if (isAutoSwitchingTab.current) {
+            // If switching automatically due to search, DON'T clear search
+            isAutoSwitchingTab.current = false;
+        } else {
+            // Manual tab click -> Clear search
+            if (executedSearchTerm) {
+                setSearchText('');
+                setExecutedSearchTerm('');
+            }
         }
     }, [activeTab]);
 
@@ -114,7 +126,14 @@ const Dashboard: React.FC = () => {
             // 1. Get Total Count (Only on first page or tab/search change)
             if (page === 1) {
                 import('../services/firebase').then(({ getOrdersCount }) => {
-                    getOrdersCount(constraints).then(count => setTotal(count));
+                    getOrdersCount(constraints).then(count => {
+                        setTotal(count);
+                        // Handle No Match Alert here or in subscribe?
+                        // If count is 0 and we are searching, we know immediately.
+                        if (executedSearchTerm.trim() && count === 0) {
+                            message.warning(t('dashboard.messages.noOrderFound') || 'Order not found / Không tìm thấy đơn hàng');
+                        }
+                    });
                 });
             }
 
@@ -128,6 +147,18 @@ const Dashboard: React.FC = () => {
                     if (lastDoc) {
                         pageCursors.current.set(page, lastDoc);
                     }
+
+                    // Auto-Switch Tab Logic
+                    if (executedSearchTerm.trim() && newOrders.length > 0) {
+                        const foundOrder = newOrders[0]; // Assuming ID search returns 1 result
+                        // Check if order is in a different tab and valid status
+                        if (validStatuses.includes(foundOrder.status) && foundOrder.status !== activeTab) {
+                            console.log(`Auto - switching tab from ${activeTab} to ${foundOrder.status} `);
+                            isAutoSwitchingTab.current = true;
+                            navigate('/' + foundOrder.status);
+                        }
+                    }
+
                     setLoading(false);
                 }, (error) => {
                     console.error("Error:", error);
@@ -140,7 +171,7 @@ const Dashboard: React.FC = () => {
         return () => {
             if (unsubscribe) unsubscribe();
         };
-    }, [user, activeTab, isDS, page, pageSize, executedSearchTerm]); // Add executedSearchTerm dependency
+    }, [user, activeTab, isDS, page, pageSize, executedSearchTerm]);
 
     const handlePageChange = (p: number, ps: number) => {
         setPage(p);
@@ -274,16 +305,16 @@ const Dashboard: React.FC = () => {
                             onChange={handlePageChange}
                             showSizeChanger={false}
                             pageSizeOptions={['25']}
-                            showTotal={(total, range) => `${range[0]}-${range[1]} ${t('dashboard.pagination.of')} ${total} ${t('dashboard.pagination.items')}`}
+                            showTotal={(total, range) => `${range[0]} -${range[1]} ${t('dashboard.pagination.of')} ${total} ${t('dashboard.pagination.items')} `}
                             size="small"
                         />
                         <div style={{ display: 'flex', gap: 8, background: '#fff', padding: 4, borderRadius: 8, border: '1px solid #eee' }}>
                             <AppstoreOutlined
-                                className={`view-switcher-icon ${viewMode === 'grid' ? 'active' : ''}`}
+                                className={`view - switcher - icon ${viewMode === 'grid' ? 'active' : ''} `}
                                 onClick={() => setViewMode('grid')}
                             />
                             <BarsOutlined
-                                className={`view-switcher-icon ${viewMode === 'list' ? 'active' : ''}`}
+                                className={`view - switcher - icon ${viewMode === 'list' ? 'active' : ''} `}
                                 onClick={() => setViewMode('list')}
                             />
                         </div>

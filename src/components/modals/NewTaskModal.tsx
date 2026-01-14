@@ -6,11 +6,11 @@ import { colors } from '../../theme/themeConfig';
 import type { Order } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { doc, setDoc, collection } from 'firebase/firestore';
-import { db } from '../../services/firebase';
+import { db, checkOrderExists } from '../../services/firebase';
 import { useUpload } from '../../contexts/UploadContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import dayjs from 'dayjs';
 import ImagePreview from '../common/ImagePreview';
+import { generateDropboxPath } from '../../utils/order';
 
 const { TextArea } = Input;
 
@@ -88,7 +88,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
 
         const fetchOrder = async () => {
             setFetching(true);
-            message.loading({ content: 'Đang tìm thông tin đơn hàng...', key: 'fetchOrder', duration: 0 }); // Indefinite loading
+            message.loading({ content: t('autoFill.fetching'), key: 'fetchOrder', duration: 0 }); // Indefinite loading
 
             try {
                 const encodedId = encodeURIComponent(cleanId);
@@ -109,10 +109,10 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                         }
                     } else {
                         setFetchedOrder(null);
-                        message.info({ content: 'Không tìm thấy đơn hàng', key: 'fetchOrder' });
+                        message.info({ content: t('autoFill.notFound'), key: 'fetchOrder' });
                     }
                 } else {
-                    message.error({ content: 'Lỗi kết nối server', key: 'fetchOrder' });
+                    message.error({ content: t('autoFill.serverError'), key: 'fetchOrder' });
                 }
             } catch (error) {
                 console.error("Fetch order error", error);
@@ -239,16 +239,12 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
         setLoading(true);
         try {
             const readableId = values.readableId;
-            const year = dayjs().format('YYYY');
-            const month = dayjs().format('MM');
-            const safeTitle = (values.title || '')
-                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-                .replace(/đ/g, "d").replace(/Đ/g, "D")
-                .replace(/[^a-zA-Z0-9]/g, "_")
-                .substring(0, 50);
-
-            const skuPart = values.sku ? `${values.sku}_` : '';
-            const dropboxPath = `/PINK_POD_SYSTEM/${year}/${month}/${readableId}_${skuPart}${safeTitle}`;
+            const dropboxPath = generateDropboxPath({
+                readableId: values.readableId,
+                title: values.title || '',
+                sku: values.sku,
+                created_at: new Date()
+            });
 
             const newOrderRef = doc(collection(db, "tasks"));
             const orderId = newOrderRef.id;
@@ -430,7 +426,24 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                         </Form.Item>
                     </Col>
                     <Col span={14}>
-                        <Form.Item name="readableId" label={t('newTask.form.orderId')} rules={[{ required: true, message: 'Vui lòng nhập Order ID' }]}>
+                        <Form.Item
+                            name="readableId"
+                            label={t('newTask.form.orderId')}
+                            rules={[
+                                { required: true, message: 'Vui lòng nhập Order ID' },
+                                {
+                                    validator: async (_, value) => {
+                                        if (!value) return Promise.resolve();
+                                        const exists = await checkOrderExists(value);
+                                        if (exists) {
+                                            return Promise.reject(new Error('Order ID này đã tồn tại!'));
+                                        }
+                                        return Promise.resolve();
+                                    }
+                                }
+                            ]}
+                            validateTrigger="onBlur"
+                        >
                             <div style={{ position: 'relative' }}>
                                 <Input
                                     placeholder={t('newTask.form.orderId')}

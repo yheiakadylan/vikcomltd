@@ -51,7 +51,8 @@ export const translations = {
             messages: {
                 deleteSuccess: 'Task deleted successfully.',
                 deleteError: 'Error deleting task.',
-                noPermission: 'Permission denied.'
+                noPermission: 'Permission denied.',
+                noOrderFound: 'Order not found'
             }
         },
         newTask: {
@@ -75,7 +76,9 @@ export const translations = {
         taskDetail: {
             header: {
                 urgent: 'URGENT 🔥',
-                normal: 'Normal'
+                normal: 'Normal',
+                urgentOn: 'Urgent Mode ON',
+                urgentOff: 'Urgent Mode OFF'
             },
             tabs: {
                 details: 'Task Details',
@@ -110,7 +113,8 @@ export const translations = {
                 claim: 'CLAIM TASK',
                 requestFix: 'Request Fix',
                 approve: 'APPROVE',
-                submit: 'SUBMIT'
+                submit: 'SUBMIT',
+                claimSuccess: 'Claimed Successfully'
             },
             activities: {
                 empty: 'No activities yet',
@@ -154,7 +158,10 @@ export const translations = {
             fillSuccess: 'Data auto-filled!',
             fetchError: 'Could not fetch order data',
             imageError: 'Could not auto-download Mockup (CORS blocked). Please upload manually.',
-            filling: 'Auto-filling...'
+            filling: 'Auto-filling...',
+            fetching: 'Fetching order data...',
+            notFound: 'Order not found',
+            serverError: 'Server connection error'
         }
     },
     vi: {
@@ -209,7 +216,8 @@ export const translations = {
             messages: {
                 deleteSuccess: 'Đã xóa task.',
                 deleteError: 'Lỗi khi xóa task.',
-                noPermission: 'Không có quyền truy cập.'
+                noPermission: 'Không có quyền truy cập.',
+                noOrderFound: 'Không tìm thấy đơn hàng'
             }
         },
         newTask: {
@@ -233,7 +241,9 @@ export const translations = {
         taskDetail: {
             header: {
                 urgent: 'GẤP 🔥',
-                normal: 'Thường'
+                normal: 'Thường',
+                urgentOn: 'Đã bật chế độ GẤP 🔥',
+                urgentOff: 'Đã tắt chế độ Gấp'
             },
             tabs: {
                 details: 'Chi tiết Task',
@@ -268,7 +278,8 @@ export const translations = {
                 claim: 'NHẬN TASK',
                 requestFix: 'Yêu cầu sửa',
                 approve: 'DUYỆT',
-                submit: 'GỬI DUYỆT'
+                submit: 'GỬI DUYỆT',
+                claimSuccess: 'Đã nhận Task'
             },
             activities: {
                 empty: 'Chưa có hoạt động nào',
@@ -312,7 +323,10 @@ export const translations = {
             fillSuccess: 'Đã điền dữ liệu!',
             fetchError: 'Không thể lấy dữ liệu đơn hàng',
             imageError: 'Không thể tải ảnh Mockup (bị chặn). Vui lòng tải thủ công.',
-            filling: 'Đang điền...'
+            filling: 'Đang điền...',
+            fetching: 'Đang tìm thông tin đơn hàng...',
+            notFound: 'Không tìm thấy đơn hàng',
+            serverError: 'Lỗi kết nối server'
         }
     }
 };
