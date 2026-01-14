@@ -9,6 +9,7 @@ import { uploadFileToDropbox } from '../../services/dropbox';
 import { colors } from '../../theme/themeConfig';
 import { useUpload } from '../../contexts/UploadContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { getOptimizedImageUrl } from '../../utils/image';
 
 const { Dragger } = Upload;
 const { TextArea } = Input;
@@ -287,9 +288,12 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ order, open, onCancel
                     <div style={{ marginBottom: 24, borderRadius: 12, overflow: 'hidden', border: '1px solid #f0f0f0', position: 'relative' }}>
                         {order?.mockupUrl ? (
                             <Image
-                                src={formatDropboxUrl(order.mockupUrl)}
+                                src={getOptimizedImageUrl(order.mockupUrl, 600, 600)}
                                 alt="Mockup"
                                 style={{ width: '100%', objectFit: 'contain', display: 'block' }}
+                                preview={{
+                                    src: formatDropboxUrl(order.mockupUrl)
+                                }}
                             />
                         ) : (
                             <div style={{ height: 200, background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc' }}>

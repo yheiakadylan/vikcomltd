@@ -1,6 +1,7 @@
 import React from 'react';
+import { getOptimizedImageUrl } from '../../utils/image';
 import { Button, Popconfirm, Tag, Image } from 'antd';
-import { CloudUploadOutlined, FireFilled, DeleteOutlined } from '@ant-design/icons';
+import { CloudUploadOutlined, FireFilled, DeleteOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useLanguage } from '../../contexts/LanguageContext';
 import type { Order } from '../../types';
@@ -32,15 +33,22 @@ const OrderRow: React.FC<OrderRowProps> = ({
             style={{ borderColor: isUrgent ? '#f5222d' : undefined }}
             onClick={() => onOpenDetail(order)}
         >
-            <div style={{ width: 80, height: 80, borderRadius: 8, overflow: 'hidden', marginRight: 16, flexShrink: 0 }}>
+            <div
+                style={{ width: 80, height: 80, borderRadius: 8, overflow: 'hidden', marginRight: 16, flexShrink: 0 }}
+            >
                 {order.mockupUrl ? (
                     <Image
-                        src={order.mockupUrl}
+                        src={getOptimizedImageUrl(order.mockupUrl, 160, 160)}
                         preview={false}
                         width="100%"
                         height="100%"
                         style={{ objectFit: 'cover' }}
                         fallback={`https://placehold.co/80x80/e6e6e6/a3a3a3?text=${t('dashboard.card.imageText')}`}
+                        placeholder={
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', background: '#f5f5f5' }}>
+                                <ClockCircleOutlined style={{ fontSize: 16, color: '#ccc' }} spin />
+                            </div>
+                        }
                     />
                 ) : (
                     <div style={{ width: '100%', height: '100%', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

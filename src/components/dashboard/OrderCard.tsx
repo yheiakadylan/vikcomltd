@@ -1,4 +1,5 @@
 import React from 'react';
+import { getOptimizedImageUrl } from '../../utils/image';
 import { Card, Image, Button, Popconfirm, Tag } from 'antd';
 import { CloudUploadOutlined, FireFilled, DeleteOutlined, RollbackOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -29,16 +30,6 @@ const OrderCard: React.FC<OrderCardProps> = ({
         ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline).format('DD/MM')
         : null;
 
-    const formatDropboxUrl = (url?: string) => {
-        if (!url) return '';
-        if (url.includes('?') && url.lastIndexOf('?') > url.indexOf('?')) return url.replace(/\?raw=1$/, '&raw=1');
-        if (url.includes('raw=1')) return url;
-        if (url.includes('dropbox.com')) {
-            const clean = url.replace('?dl=0', '').replace('&dl=0', '');
-            return clean + (clean.includes('?') ? '&' : '?') + 'raw=1';
-        }
-        return url;
-    };
 
     return (
         <Card
@@ -53,16 +44,23 @@ const OrderCard: React.FC<OrderCardProps> = ({
             }}
             onClick={() => onOpenDetail(order)}
             cover={
-                <div style={{ height: 180, position: 'relative', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                <div
+                    style={{ height: 180, position: 'relative', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+                >
                     {order.mockupUrl ? (
                         <Image
                             alt="mockup"
-                            src={formatDropboxUrl(order.mockupUrl)}
+                            src={getOptimizedImageUrl(order.mockupUrl, 400, 300)}
                             preview={false}
                             width="100%"
                             height="100%"
                             style={{ objectFit: 'cover' }}
                             fallback={`https://placehold.co/400x300/e6e6e6/a3a3a3?text=${t('dashboard.card.noImage')}`}
+                            placeholder={
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', background: '#f5f5f5' }}>
+                                    <ClockCircleOutlined style={{ fontSize: 24, color: '#ccc' }} spin />
+                                </div>
+                            }
                         />
                     ) : (
                         <div className="text-gray-300"><CloudUploadOutlined style={{ fontSize: 32, color: '#ccc' }} /></div>
