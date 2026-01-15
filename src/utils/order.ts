@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import type { Order } from '../types';
 
-export const generateDropboxPath = (order: Partial<Order> & { readableId: string, title: string }) => {
+export const generateStoragePath = (order: Partial<Order> & { readableId: string, title: string }) => {
     const year = order.created_at ? dayjs((order.created_at as any).toDate ? (order.created_at as any).toDate() : order.created_at).format('YYYY') : dayjs().format('YYYY');
     const month = order.created_at ? dayjs((order.created_at as any).toDate ? (order.created_at as any).toDate() : order.created_at).format('MM') : dayjs().format('MM');
 

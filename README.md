@@ -12,17 +12,16 @@ A comprehensive Order Management System for Print-on-Demand (POD) workflows, des
   - Kanban-style status tracking (New, Doing, In Review, Need Fix, Done).
   - Urgent priority handling with visual cues.
   - Real-time updates via Firebase Firestore.
-- **Dropbox Integration**:
-  - Seamless authentication.
+- **Storage Integration**:
   - Direct file uploads for Sample files (CS) and Designs (DS).
-  - Organized folder structure (`/PINK/{YEAR}/{ORDER_ID}`).
+  - Organized folder structure in Firebase Storage.
 
 ## Tech Stack
 
 - **Frontend**: React, TypeScript, Vite
 - **UI Framework**: Ant Design (Customized Theme)
 - **Backend & Auth**: Firebase (Auth, Firestore)
-- **Storage**: Dropbox API v2
+- **Storage**: Firebase Storage
 
 ## Setup
 
@@ -30,8 +29,7 @@ A comprehensive Order Management System for Print-on-Demand (POD) workflows, des
 2.  Install dependencies: `npm install`.
 3.  Configure environment variables in `.env`:
     ```
-    VITE_DROPBOX_APP_KEY=your_app_key
-    // Add Firebase config in src/services/firebase.ts or .env if refactored
+    // Add Firebase config in .env
     ```
 4.  Run locally: `npm run dev`.
 
@@ -39,7 +37,7 @@ A comprehensive Order Management System for Print-on-Demand (POD) workflows, des
 
 - `/src/components/modals`: Core interaction modals (New Task, Task Detail).
 - `/src/pages`: Main views (Login, Dashboard, Admin).
-- `/src/services`: API integrations (Firebase, Dropbox).
+- `/src/services`: API integrations (Firebase).
 - `/src/contexts`: Global state (Auth).
 - `/src/theme`: Design system configuration.
 

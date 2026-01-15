@@ -6,7 +6,7 @@ export interface AppUser {
     displayName: string;
     role: Role;
     avatar?: string;
-    isActive?: boolean; // Added
+    isActive?: boolean;
 }
 
 export type User = AppUser & { avatarUrl?: string }; // Alias for Admin component compatibility or migration
@@ -16,7 +16,7 @@ export type OrderStatus = 'draft' | 'new' | 'doing' | 'in_review' | 'need_fix' |
 
 export interface FileAttachment {
     name: string;
-    link: string; // Link Dropbox
+    link: string; // URL
     type?: string;
 }
 
@@ -36,18 +36,11 @@ export interface Order {
     createdBy: string;
     designerId?: string | null;
 
-    dropboxPath: string; // Folder gốc trên Dropbox
-
     sampleFiles?: FileAttachment[]; // Ảnh mẫu
-    mockupUrl?: string; // New: Link to mockup image
+    mockupUrl?: string; // Link to mockup image (Firebase Storage)
     customerFiles?: FileAttachment[]; // New: Customer uploaded files
     designFiles?: FileAttachment[]; // File thiết kế Final
-
-    // Storage & Optimization
-    dropboxUrl?: string; // Dropbox Link (Cold Storage)
-    mockupDropboxPath?: string; // Path on Dropbox just in case
-    storageCleaned?: boolean; // True if Firebase file deleted
-    storageMethod?: 'dropbox' | 'firebase' | 'hybrid';
+    storagePath?: string; // Path to storage folder (e.g. /Year/Month/Title)
 
     created_at?: any;
     updatedAt?: any;
@@ -66,7 +59,7 @@ export interface UploadItem {
     orderId: string;
     readableId?: string; // Human-readable order ID for notifications
     targetField: 'customerFiles' | 'designFiles' | 'mockupUrl';
-    dropboxPath: string; // Target path in Dropbox
+    storagePath?: string; // Firebase Storage Path
 
     // Result
     resultUrl?: string;
@@ -81,20 +74,4 @@ export interface OrderLog {
     content?: string;
     attachments?: FileAttachment[];
     createdAt?: any;
-}
-
-// Sync Queue for Dropbox (Persistent Queue System)
-export interface SyncQueueTask {
-    id?: string;
-    firebasePath: string;
-    dropboxPath: string;
-    orderId: string;
-    readableId?: string;
-    targetField?: string; // 'mockupUrl' | 'designFiles' | 'customerFiles'
-    status: 'pending' | 'processing' | 'success' | 'error';
-    retryCount: number;
-    createdAt: any; // Firestore Timestamp
-    syncedAt?: any;
-    updatedAt?: any;
-    errorLog?: string;
 }

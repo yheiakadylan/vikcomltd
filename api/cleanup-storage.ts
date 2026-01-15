@@ -6,94 +6,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // We can check authorization header if needed.
 
     if (req.method === 'POST') {
-        // Manual Trigger for specific Order
-        const { orderId, firebasePath } = req.body;
+        const { orderId, prefix } = req.body;
         if (!orderId) return res.status(400).json({ error: 'Missing orderId' });
 
         try {
             if (!bucket || !db) {
-                console.error("Firebase Init Missing");
                 return res.status(500).json({ error: "Server Configuration Error: Firebase not initialized" });
             }
             console.log(`[CLEANUP] Cleaning up Order ${orderId}`);
 
-            // 1. Delete specific file if provided, or clean up all files for order?
-            // User plan: "Xóa file trên Firebase ... update Firestore firebaseUrl = null"
-            // If firebasePath provided:
-            if (firebasePath) {
-                await bucket.file(firebasePath).delete().catch((e: any) => console.warn("File delete ignored:", e.message));
-            } else {
-                // Fetch order to get the correct path prefix
+            // 1. Determine Delete Prefix
+            let deletePrefix = prefix;
+
+            // If no prefix provided by client, try to guess from Firestore (Legacy support)
+            if (!deletePrefix) {
                 const orderDoc = await db.collection('tasks').doc(orderId).get();
                 if (orderDoc.exists) {
                     const data = orderDoc.data();
-                    // Use dropboxPath as prefix (strip leading slash)
-                    const prefix = data?.dropboxPath ? (data.dropboxPath.startsWith('/') ? data.dropboxPath.substring(1) : data.dropboxPath) : `orders/${orderId}/`; // Fallback to legacy
-
-                    console.log(`[CLEANUP] Deleting files with prefix: ${prefix}`);
-                    const [files] = await bucket.getFiles({ prefix: prefix });
-                    await Promise.all(files.map((f: any) => f.delete()));
+                    // Only use storagePath
+                    const path = data?.storagePath;
+                    if (path) {
+                        deletePrefix = path.startsWith('/') ? path.substring(1) : path;
+                    }
                 }
             }
 
-            // 2. Update Firestore
-            // We need to know which fields to nullify. 
-            // This is tricky if we have multiple fields (mockup, designFiles).
-            // For now, let's assume we nullify `mockupUrl` if it looks like a firebase link?
-            // Or we just set `storageCleaned: true` and let Frontend handle logic?
-            // User said: "Set firebaseUrl = null". This implies a specific field structure.
-            // Let's update `storageCleaned: true`.
+            // 2. Delete Files
+            if (deletePrefix) {
+                // Ensure trailing slash to avoid partial matches on similar folders if any
+                if (!deletePrefix.endsWith('/')) deletePrefix += '/';
 
-            await db.collection('tasks').doc(orderId).update({
-                storageCleaned: true,
-                firebaseUrl: null, // As per user request example
-                updatedAt: new Date()
-            });
+                // Remove leading slash if present (Google Cloud Storage paths don't start with /)
+                if (deletePrefix.startsWith('/')) deletePrefix = deletePrefix.substring(1);
+
+                console.log(`[CLEANUP] Deleting files with prefix: ${deletePrefix}`);
+                try {
+                    const [files] = await bucket.getFiles({ prefix: deletePrefix });
+                    // Parallel delete
+                    await Promise.all(files.map((f: any) => f.delete()));
+                    console.log(`[CLEANUP] Deleted ${files.length} files.`);
+                } catch (e: any) {
+                    console.warn(`[CLEANUP] Failed to delete files for prefix ${deletePrefix}:`, e.message);
+                }
+            }
+
+            // 3. Mark as cleaned in Firestore (Optional, but good for tracking)
+            // User requested NO auto-delete logic, but since we are deleting the task anyway (in the next step of deleteOrder),
+            // updates here might be redundant if the doc is about to be deleted.
+            // But deleteOrder client-side deletes the doc AFTER this call.
+            // So we can update just in case deleteDoc fails? 
+            // Or just skip update since doc will be deleted.
+
+            // Let's Skip Update to save a write, since doc is deleted immediately after.
 
             return res.status(200).json({ success: true });
         } catch (error: any) {
-            return res.status(500).json({ error: error.message });
-        }
-    } else if (req.method === 'GET') {
-        // Cron Job Trigger: Clean old orders
-        try {
-            const tenDaysAgo = new Date();
-            tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
-
-            const snapshot = await db.collection('tasks')
-                .where('status', 'in', ['in_review', 'done']) // Clean done or stuck reviews
-                .where('updatedAt', '<', tenDaysAgo)
-                .where('storageCleaned', '!=', true)
-                .limit(20) // Batch size
-                .get();
-
-            if (snapshot.empty) {
-                return res.status(200).json({ message: 'No orders to clean' });
-            }
-
-            const results = [];
-            for (const doc of snapshot.docs) {
-                const data = doc.data();
-                const orderId = doc.id;
-
-                // Delete files with prefix
-                // Assuming standard prefix `orders/{readableId}` or similar.
-                // We need to know the path. 
-                // Getting files by prefix might be safer if we follow convention.
-                // Let's assume we clean up based on known paths or just mark cleaned for now?
-                // Real implementation requires accurate paths.
-                // "firebaseUrl" field might contain the path logic? 
-
-                // For safety in this "demo/draft" phase, we will just Log it and mark cleaned.
-                // Or try to delete if we know path.
-
-                await db.collection('tasks').doc(orderId).update({ storageCleaned: true });
-                results.push(orderId);
-            }
-
-            return res.status(200).json({ cleaned: results });
-
-        } catch (error: any) {
+            console.error('[CLEANUP] Error:', error);
             return res.status(500).json({ error: error.message });
         }
     }

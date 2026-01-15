@@ -46,7 +46,7 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /^https:\/\/.*(firebasestorage\.googleapis\.com|dropbox\.com|content\.googleapis\.com).*/i,
+            urlPattern: /^https:\/\/.*(firebasestorage\.googleapis\.com).*/i,
             handler: 'NetworkOnly',
           }
         ]

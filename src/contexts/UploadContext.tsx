@@ -2,8 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import type { UploadItem, UploadStatus } from '../types';
 import { uploadFileToStorage } from '../services/firebase';
 import { updateOrder } from '../services/firebase';
-import { arrayUnion, collection, addDoc } from 'firebase/firestore';
-import { db } from '../services/firebase'; // Import db instance
+import { arrayUnion } from 'firebase/firestore';
 import { notification } from 'antd';
 import { useLanguage } from './LanguageContext';
 import { translations } from '../utils/translations';
@@ -37,7 +36,7 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             orderId,
             readableId, // Assign readableId
             targetField,
-            dropboxPath: `${basePath}/${file.name}`
+            storagePath: `${basePath}/${file.name}`
         }));
 
         setQueue(prev => [...prev, ...newItems]);
@@ -61,6 +60,7 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Check for Order Completion
     useEffect(() => {
+        // ... (Completion logic remains the same)
         // Group by OrderId
         const orders = Array.from(new Set(queue.map(i => i.orderId)));
 
@@ -126,7 +126,7 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
             }
         });
-    }, [queue]);
+    }, [queue, language]);
 
     const processNext = useCallback(async () => {
         if (processingRef.current) return;
@@ -136,71 +136,38 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (!nextItem) return;
 
         processingRef.current = true;
-        const { id, file, dropboxPath, orderId, targetField } = nextItem;
+        const { id, file, storagePath, orderId, targetField } = nextItem;
 
         updateItemStatus(id, 'uploading', 10);
 
         try {
             // 1. Upload to Firebase Storage (Hot Storage)
-            // User Request: "tổ chức thư mục của storage firebase giống tổ chức thư mục của dropbox"
-            // Dropbox Path: /{Team}/{Year}/{Month}/{ReadableID}/{FileName}
-            // We use the passed dropboxPath but remove leading slash for Firebase Storage consistency (optional but cleaner)
-            const firebaseStoragePath = dropboxPath.startsWith('/') ? dropboxPath.substring(1) : dropboxPath;
+            // Use storagePath directly (remove leading slash if present for consistency)
+            const finalPath = storagePath ? (storagePath.startsWith('/') ? storagePath.substring(1) : storagePath) : `uploads/${orderId}/${file.name}`;
 
-            const firebaseUrl = await uploadFileToStorage(file, firebaseStoragePath);
-            updateItemStatus(id, 'uploading', 50);
-
-            // 2. Add to Persistent Queue for Dropbox sync
-            const queueRef = await addDoc(collection(db, 'sync_queue'), {
-                firebasePath: firebaseStoragePath,
-                dropboxPath: dropboxPath,
-                orderId: orderId,
-                readableId: nextItem.readableId,
-                targetField: targetField,
-                status: 'pending',
-                retryCount: 0,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            });
-
-            // 3. Trigger immediate processing (Fire-and-forget)
-            fetch('/api/process-queue', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ queueId: queueRef.id })
-            }).catch(err => console.warn('[Upload] Queue trigger failed, cron will retry:', err));
-
+            const firebaseUrl = await uploadFileToStorage(file, finalPath);
             updateItemStatus(id, 'uploading', 90);
 
-            // 4. Update Firestore with firebaseUrl
+            // 2. Update Firestore with firebaseUrl
             const attachment = {
                 name: file.name,
-                link: firebaseUrl, // Immediate access
+                link: firebaseUrl, // Direct access
                 type: file.type,
-                // optionally store backup path if known? 
-                // But sync-dropbox will update `dropboxReady` later.
             };
 
             const updateData: any = {};
             // Save firebaseUrl for immediate display
             if (targetField === 'mockupUrl') {
                 updateData[targetField] = firebaseUrl;
-                // Also save backup path hint?
-                updateData['mockupDropboxPath'] = dropboxPath;
             } else {
                 updateData[targetField] = arrayUnion(attachment);
             }
-
-            // Mark as using hybrid storage
-            updateData['storageMethod'] = 'hybrid';
 
             await updateOrder(orderId, updateData);
 
             updateItemStatus(id, 'success', 100, undefined, firebaseUrl);
         } catch (error: any) {
             console.error("Upload Error Context:", error);
-
-            // Firebase Storage rarely gives 429 logic like Dropbox, but generic retry is fine.
             updateItemStatus(id, 'error', 0, error.message || "Upload Failed");
         } finally {
             if (queue.find(i => i.id === id)?.status !== 'retrying') {

@@ -10,7 +10,7 @@ import { db, checkOrderExists } from '../../services/firebase';
 import { useUpload } from '../../contexts/UploadContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import ImagePreview from '../common/ImagePreview';
-import { generateDropboxPath } from '../../utils/order';
+import { generateStoragePath } from '../../utils/order';
 
 const { TextArea } = Input;
 
@@ -239,7 +239,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
         setLoading(true);
         try {
             const readableId = values.readableId;
-            const dropboxPath = generateDropboxPath({
+            const storagePath = generateStoragePath({
                 readableId: values.readableId,
                 title: values.title || '',
                 sku: values.sku,
@@ -259,7 +259,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                 status: 'new',
                 isUrgent: isUrgent,
                 createdBy: user.uid || '',
-                dropboxPath: dropboxPath,
+                storagePath: storagePath,
                 mockupUrl: '',
                 customerFiles: [],
                 sampleFiles: [],
@@ -279,7 +279,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
             const finalMockupName = `mockup${ext}`;
             const renamedMockupFile = new File([mockupFile.file], finalMockupName, { type: mockupFile.file.type });
 
-            enqueue([renamedMockupFile], orderId, 'mockupUrl', `${dropboxPath}/Mockup`, readableId);
+            enqueue([renamedMockupFile], orderId, 'mockupUrl', `${storagePath}/Mockup`, readableId);
 
             // 3. Enqueue Customer Files
             if (customerFiles.length > 0) {
@@ -292,7 +292,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                     return new File([cFile.file], finalName, { type: cFile.file.type });
                 });
 
-                enqueue(filesToUpload, orderId, 'customerFiles', `${dropboxPath}/Customer`, readableId);
+                enqueue(filesToUpload, orderId, 'customerFiles', `${storagePath}/Customer`, readableId);
             }
 
             message.success('Đã tạo task! File đang được upload nền...');

@@ -4,7 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
-import AuthCallback from './pages/AuthCallback';
+
 import NotFound from './pages/NotFound';
 import { Spin, App as AntdApp } from 'antd';
 import { UploadProvider } from './contexts/UploadContext';
@@ -33,8 +33,7 @@ const AppRoutes = () => {
     <>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/auth/dropbox/callback" element={<AuthCallback />} />
+
 
         {/* Route cho mọi người (CS/DS/Admin) */}
         <Route path="/" element={

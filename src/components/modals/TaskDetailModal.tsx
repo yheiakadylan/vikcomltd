@@ -20,8 +20,8 @@ import {
 import { colors } from '../../theme/themeConfig';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { formatDropboxUrl, getOptimizedImageUrl } from '../../utils/image';
-import { generateDropboxPath } from '../../utils/order';
+import { getOptimizedImageUrl } from '../../utils/image';
+import { generateStoragePath } from '../../utils/order';
 import {
     addOrderLog,
     updateOrder,
@@ -249,28 +249,14 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
             let uploadedFiles: FileAttachment[] = [...designFiles];
             // Upload staged files
             for (const file of stagedFiles) {
-                // User Request: Match Firebase structure with Dropbox
-                // Use order.dropboxPath if available, otherwise generate consistent path
-                const baseDropboxPath = order.dropboxPath || generateDropboxPath(order as any);
-                const dropboxFilePath = `${baseDropboxPath}/Designs/${file.name}`; // Structure: .../Designs/FileName
+                // Generate path consistent with storage structure
+                const baseStoragePath = generateStoragePath(order as any);
+                const fullStoragePath = `${baseStoragePath}/Designs/${file.name}`;
 
                 // Remove leading slash for Firebase Storage
-                const firebasePath = dropboxFilePath.startsWith('/') ? dropboxFilePath.substring(1) : dropboxFilePath;
+                const firebasePath = fullStoragePath.startsWith('/') ? fullStoragePath.substring(1) : fullStoragePath;
 
                 const url = await uploadFileToStorage(file, firebasePath);
-
-                // Trigger sync to Dropbox for redundancy
-                // Correctly passing firebasePath and dropboxPath
-                fetch('/api/sync-dropbox', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        firebasePath: firebasePath,
-                        dropboxPath: dropboxFilePath,
-                        orderId: order.id,
-                        readableId: order.readableId
-                    })
-                }).catch(e => console.error("Sync trigger failed", e));
 
                 uploadedFiles.push({
                     name: file.name,
@@ -320,10 +306,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
         try {
             const attachments: FileAttachment[] = [];
             for (const file of commentFiles) {
-                // Match Dropbox structure for Comments as well
-                const baseDropboxPath = order.dropboxPath || generateDropboxPath(order as any);
-                const dropboxFilePath = `${baseDropboxPath}/Comments/${file.name}`;
-                const firebasePath = dropboxFilePath.startsWith('/') ? dropboxFilePath.substring(1) : dropboxFilePath;
+                const baseStoragePath = generateStoragePath(order as any);
+                const fullStoragePath = `${baseStoragePath}/Comments/${file.name}`;
+                const firebasePath = fullStoragePath.startsWith('/') ? fullStoragePath.substring(1) : fullStoragePath;
 
                 const url = await uploadFileToStorage(file, firebasePath);
                 attachments.push({ name: file.name, link: url, type: 'file' });
@@ -350,12 +335,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
         e.preventDefault();
         e.stopPropagation();
 
-        // Handle Dropbox specially
-        if (url.includes('dropbox.com')) {
-            const dlUrl = url.replace('?dl=0', '') + '?dl=1';
-            window.open(dlUrl, '_self');
-            return;
-        }
+
 
         // Handle Firebase/Other via Proxy API to avoid CORS and force download
         const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
@@ -398,19 +378,13 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                         {order?.mockupUrl ? (
                             <SmartImage
                                 src={order.mockupUrl}
-                                backupSrc={order.dropboxUrl}
-                                alt="Mockup"
                                 width="100%"
                                 height={400}
                                 style={{ objectFit: 'contain', display: 'block' }}
                                 preview={{
                                     src: order.mockupUrl
                                 }}
-                                updatedAt={order.updatedAt}
                                 fit="inside"
-                                taskStatus={order.status}
-                                taskUpdatedAt={order.updatedAt}
-                                dropboxPath={order.dropboxPath}
                             />
                         ) : (
                             <div style={{ height: 400, background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc' }}>
@@ -436,7 +410,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                             {order?.customerFiles && order.customerFiles.length > 0 ? (
                                 order.customerFiles.map((file, idx) => {
                                     const isImage = /\.(jpeg|jpg|png|gif|webp|svg)$/i.test(file.name);
-                                    const fileUrl = formatDropboxUrl(file.link);
+                                    const fileUrl = file.link;
 
                                     return (
                                         <div key={idx} style={{
@@ -480,7 +454,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                     type="text"
                                                     size="small"
                                                     icon={<EyeOutlined />}
-                                                    href={file.link.includes('dropbox.com') ? file.link.replace('?dl=1', '') + '?dl=0' : file.link}
+                                                    href={file.link}
                                                     target="_blank"
                                                     title="View"
                                                 />
@@ -683,7 +657,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                 {designFiles.length > 0 ? (
                                                     designFiles.map((file, idx) => {
                                                         const isImage = /\.(jpeg|jpg|png|gif|webp|svg)$/i.test(file.name);
-                                                        const fileUrl = formatDropboxUrl(file.link);
+                                                        const fileUrl = file.link;
 
                                                         return (
                                                             <div key={idx} style={{
@@ -727,7 +701,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                                         type="text"
                                                                         size="small"
                                                                         icon={<EyeOutlined />}
-                                                                        href={file.link.includes('dropbox.com') ? file.link.replace('?dl=1', '') + '?dl=0' : file.link}
+                                                                        href={file.link}
                                                                         target="_blank"
                                                                         title="View"
                                                                     />

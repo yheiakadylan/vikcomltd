@@ -7,6 +7,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { usePersistedState } from '../hooks/usePersistedState'; // Import hook
 import type { Order, OrderStatus } from '../types';
 import { deleteOrder } from '../services/firebase';
+import { generateStoragePath } from '../utils/order';
 import { sortOrders } from '../utils/sortOrders';
 import NewTaskModal from '../components/modals/NewTaskModal';
 import TaskDetailModal from '../components/modals/TaskDetailModal';
@@ -192,16 +193,26 @@ const Dashboard: React.FC = () => {
         setIsGiveBackModalOpen(true);
     }, []);
 
+
+
     const handleDelete = React.useCallback(async (orderId: string) => {
         try {
-            await deleteOrder(orderId);
+            // Find order to generate storage prefix for cleanup
+            const order = orders.find(o => o.id === orderId);
+
+            const prefix = order ? (order.storagePath || generateStoragePath(order as any)) : undefined;
+
+            await deleteOrder(orderId, prefix);
             message.success(t('dashboard.messages.deleteSuccess'));
         } catch (error) {
+            console.error("Delete Error:", error);
             message.error(t('dashboard.messages.deleteError'));
         }
-    }, [message]);
+    }, [orders, t, message]); // Added t dependency
 
-    const renderTabContent = () => {
+
+    // Memoize tab content to prevent re-render when switching tabs
+    const tabContent = React.useMemo(() => {
         if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Spin size="large" /></div>;
         if (filteredOrders.length === 0) return <Empty description={t('dashboard.empty')} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
 
@@ -237,7 +248,8 @@ const Dashboard: React.FC = () => {
                 ))}
             </div>
         );
-    };
+    }, [loading, filteredOrders, viewMode, t, isCS, isDS, user, handleOpenDetail, handleOpenGiveBack, handleDelete]);
+
 
     const tabItems = [
         { key: 'new', label: t('dashboard.tabs.new'), children: null },
@@ -321,7 +333,7 @@ const Dashboard: React.FC = () => {
                     </div>
 
                     <div style={{ flex: 1 }}>
-                        {renderTabContent()}
+                        {tabContent}
                     </div>
                 </div>
             </Content>

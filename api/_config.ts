@@ -1,5 +1,4 @@
 import * as admin from 'firebase-admin';
-import { Dropbox } from 'dropbox';
 import fetch from 'node-fetch';
 
 const initFirebase = () => {
@@ -36,28 +35,3 @@ try {
 export const db = admin.apps.length ? admin.firestore() : null as any;
 export const bucket = admin.apps.length ? admin.storage().bucket() : null as any;
 
-interface DropboxOptions {
-    accessToken?: string;
-    clientId?: string;
-    clientSecret?: string;
-    refreshToken?: string;
-}
-
-export const getDropboxClient = (options: DropboxOptions = {}) => {
-    const accessToken = options.accessToken || process.env.DROPBOX_ACCESS_TOKEN;
-
-    // Auto-refresh config
-    if (options.clientId && options.clientSecret && options.refreshToken) {
-        // @ts-ignore
-        return new Dropbox({
-            clientId: options.clientId,
-            clientSecret: options.clientSecret,
-            refreshToken: options.refreshToken,
-            fetch
-        });
-    }
-
-    if (!accessToken) throw new Error("Missing DROPBOX_ACCESS_TOKEN in Env/DB and no Refresh Token config provided");
-    // @ts-ignore
-    return new Dropbox({ accessToken: accessToken, fetch });
-};

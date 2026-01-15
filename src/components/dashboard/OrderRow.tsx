@@ -1,6 +1,6 @@
 import React from 'react';
 // import { getOptimizedImageUrl } from '../../utils/image';
-import { Button, Popconfirm, Tag, Spin } from 'antd';
+import { Button, Popconfirm, Tag } from 'antd';
 import { CloudUploadOutlined, FireFilled, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -40,18 +40,13 @@ const OrderRow: React.FC<OrderRowProps> = ({
                 {order.mockupUrl ? (
                     <SmartImage
                         src={order.mockupUrl}
-                        backupSrc={order.dropboxUrl}
                         preview={false}
                         alt={order.title}
                         width={80}
                         height={80}
                         style={{ borderRadius: 8 }}
-                        placeholder={<div style={{ width: 80, height: 80, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin /></div>}
-                        updatedAt={order.updatedAt}
+
                         fit="contain"
-                        taskStatus={order.status}
-                        taskUpdatedAt={order.updatedAt}
-                        dropboxPath={order.dropboxPath}
                     />
                 ) : (
                     <div style={{ width: '100%', height: '100%', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

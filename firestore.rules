@@ -127,21 +127,7 @@ service cloud.firestore {
     match /settings/{docId} {
       allow read: if isSignedIn();
       allow create, delete: if isAdmin();
-      allow update: if isSignedIn() && (
-        isAdmin() || 
-        // Allow any user to update dropbox token (for auto-refresh)
-        (docId == 'system' && onlyUpdating(['dropbox']))
-      );
-    }
-
-    // =========================================================
-    // 6. SYNC QUEUE (Persistent Queue for Dropbox)
-    // =========================================================
-    match /sync_queue/{queueId} {
-      allow read: if isSignedIn() && isManager();
-      allow create: if isSignedIn(); // Any user can queue files
-      allow update: if false; // Only server can update queue status
-      allow delete: if isAdmin(); // Only admin can manually delete
+      allow update: if isSignedIn() && isAdmin();
     }
   }
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Button, Popconfirm, Tag, Spin } from 'antd';
+import { Card, Button, Popconfirm, Tag } from 'antd';
 import SmartImage from '../common/SmartImage';
 import { CloudUploadOutlined, FireFilled, DeleteOutlined, RollbackOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -51,19 +51,13 @@ const OrderCard: React.FC<OrderCardProps> = ({
                     {order.mockupUrl ? (
                         <SmartImage
                             src={order.mockupUrl}
-                            backupSrc={order.dropboxUrl}
                             alt={order.title}
                             width={'100%'}
                             height={200}
                             style={{ borderTopLeftRadius: 12, borderTopRightRadius: 12 }}
-                            placeholder={<div style={{ width: '100%', height: 200, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin /></div>}
-                            updatedAt={order.updatedAt}
+
                             fallback={`https://placehold.co/400x300/e6e6e6/a3a3a3?text=${t('dashboard.card.noImage')}`}
                             preview={false}
-                            fit="outside"
-                            taskStatus={order.status}
-                            taskUpdatedAt={order.updatedAt}
-                            dropboxPath={order.dropboxPath}
                         />
                     ) : (
                         <div className="text-gray-300"><CloudUploadOutlined style={{ fontSize: 32, color: '#ccc' }} /></div>

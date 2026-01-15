@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Tabs, Table, Button, Modal, Form, Input, Select, Tag, Card, App, Popconfirm, Avatar, Spin } from 'antd';
-import { PlusOutlined, DropboxOutlined, CheckCircleFilled, UserOutlined } from '@ant-design/icons';
-import { getUsers, createSecondaryUser, createUserProfile, getSystemSettings, saveSystemSettings } from '../services/firebase';
-import { initiateDropboxOAuth, checkDropboxConnection, getDropboxAccountInfo } from '../services/dropbox';
+import { Layout, Tabs, Table, Button, Modal, Form, Input, Select, Tag, App, Avatar } from 'antd';
+import { PlusOutlined, UserOutlined } from '@ant-design/icons';
+import { getUsers, createSecondaryUser, createUserProfile } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import AppHeader from '../components/layout/AppHeader';
 import type { User } from '../types';
@@ -15,14 +14,11 @@ const Admin: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [dropboxConnected, setDropboxConnected] = useState(false);
-    const [dropboxInfo, setDropboxInfo] = useState<any>(null);
     const [form] = Form.useForm();
 
     useEffect(() => {
         if (user) {
             fetchUsers();
-            checkDropbox();
         }
     }, [user]);
 
@@ -36,38 +32,6 @@ const Admin: React.FC = () => {
             message.error('Lỗi tải danh sách nhân viên');
         } finally {
             setLoading(false);
-        }
-    };
-
-    const checkDropbox = async () => {
-        try {
-            // 1. Check DB first (Source of Truth)
-            const settings = await getSystemSettings();
-            if (settings?.dropbox?.access_token) {
-                // Sync to LocalStorage for dropbox.ts service to use
-                localStorage.setItem('dropbox_access_token', settings.dropbox.access_token);
-                if (settings.dropbox.refresh_token) {
-                    localStorage.setItem('dropbox_refresh_token', settings.dropbox.refresh_token);
-                }
-
-                const isConnected = await checkDropboxConnection();
-                setDropboxConnected(isConnected);
-
-                if (isConnected) {
-                    const info = await getDropboxAccountInfo();
-                    setDropboxInfo(info);
-                } else {
-                    setDropboxInfo(null);
-                }
-            } else {
-                setDropboxConnected(false);
-                setDropboxInfo(null);
-            }
-        } catch (error) {
-            console.error("Error checking dropbox:", error);
-            setDropboxConnected(false);
-            setDropboxInfo(null);
-            message.error("Kết nối Dropbox hết hạn hoặc lỗi. Vui lòng kết nối lại.");
         }
     };
 
@@ -105,15 +69,6 @@ const Admin: React.FC = () => {
             message.error(errorMessage);
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleConnectDropbox = () => {
-        try {
-            initiateDropboxOAuth();
-        } catch (error) {
-            console.error(error);
-            message.error("Không thể kết nối Dropbox");
         }
     };
 
@@ -171,89 +126,6 @@ const Admin: React.FC = () => {
         </div>
     );
 
-    const SystemConfigTab = () => (
-        <div style={{ maxWidth: 672, margin: '0 auto' }}>
-            <Card title="Kết nối lưu trữ (Dropbox)" className="shadow-md">
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, padding: '32px 0' }}>
-                    <div style={{ textAlign: 'center' }}>
-                        {dropboxConnected ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-                                <CheckCircleFilled style={{ fontSize: 64, color: '#52c41a' }} />
-                                {dropboxInfo ? (
-                                    <div style={{ background: '#f6ffed', padding: '16px 32px', borderRadius: 8, border: '1px solid #b7eb8f' }}>
-                                        <div style={{ fontSize: 18, fontWeight: 600, color: '#389e0d' }}>Đã kết nối thành công</div>
-                                        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-                                            <Avatar size={48} src={dropboxInfo.profile_photo_url} icon={<UserOutlined />} />
-                                            <div style={{ textAlign: 'left' }}>
-                                                <div style={{ fontWeight: 'bold' }}>{dropboxInfo.name.display_name}</div>
-                                                <div style={{ color: '#8c8c8c' }}>{dropboxInfo.email}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <Spin />
-                                )}
-                            </div>
-                        ) : (
-                            <DropboxOutlined style={{ fontSize: 64, color: '#0061FE' }} />
-                        )}
-
-                        {!dropboxConnected && (
-                            <>
-                                <h3 style={{ marginTop: 16, fontSize: 20, fontWeight: 600 }}>Chưa kết nối Dropbox</h3>
-                                <p style={{ color: '#8c8c8c', marginTop: 8 }}>
-                                    Cần kết nối để tính năng upload file hoạt động.
-                                </p>
-                            </>
-                        )}
-                    </div>
-
-                    {!dropboxConnected ? (
-                        <Button
-                            type="primary"
-                            size="large"
-                            icon={<DropboxOutlined />}
-                            onClick={handleConnectDropbox}
-                            style={{ background: '#0061FE', borderColor: '#0061FE' }}
-                        >
-                            Kết nối ngay
-                        </Button>
-                    ) : (
-                        <Popconfirm
-                            title="Ngắt kết nối Dropbox"
-                            description="Bạn có chắc chắn muốn ngắt kết nối? Các tính năng upload sẽ ngừng hoạt động."
-                            onConfirm={async () => {
-                                try {
-                                    localStorage.removeItem('dropbox_access_token');
-                                    localStorage.removeItem('dropbox_refresh_token');
-                                    localStorage.removeItem('dropbox_expires_at');
-                                    sessionStorage.removeItem('dropboxCodeVerifier');
-
-                                    await saveSystemSettings({
-                                        dropbox: null
-                                    });
-
-                                    setDropboxConnected(false);
-                                    setDropboxInfo(null);
-                                    message.success("Đã ngắt kết nối");
-                                } catch (error) {
-                                    console.error(error);
-                                    message.error("Lỗi khi ngắt kết nối");
-                                }
-                            }}
-                            okText="Đồng ý"
-                            cancelText="Hủy"
-                        >
-                            <Button danger size="large">
-                                Ngắt kết nối
-                            </Button>
-                        </Popconfirm>
-                    )}
-                </div>
-            </Card>
-        </div>
-    );
-
     return (
         <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
             <AppHeader />
@@ -261,7 +133,6 @@ const Admin: React.FC = () => {
                 <div style={{ background: '#fff', padding: 24, borderRadius: 8, minHeight: 500 }}>
                     <Tabs items={[
                         { key: '1', label: 'Quản lý Nhân sự', children: <UserManagementTab /> },
-                        { key: '2', label: 'Cấu hình Hệ thống', children: <SystemConfigTab /> },
                     ]} />
                 </div>
             </Content>

@@ -4,8 +4,7 @@ import { UserOutlined, UploadOutlined } from '@ant-design/icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db, auth } from '../../services/firebase';
-import { uploadFileToDropbox } from '../../services/dropbox';
+import { db, auth, uploadFileToStorage } from '../../services/firebase';
 import type { UploadFile } from 'antd';
 
 interface UserProfileModalProps {
@@ -28,17 +27,17 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onCancel }) =
             let newAvatarUrl = avatarUrl;
 
             if (avatarFile) {
-                // Path: /PINK_POD_SYSTEM/Avartar/{email}/filename
+                // Use Firebase Storage
                 const safeEmail = user.email || user.uid;
                 // avatarFile set in beforeUpload is the File object itself (RcFile)
                 const fileToUpload = (avatarFile as any).originFileObj || avatarFile;
 
-                const result = await uploadFileToDropbox(
+                const uploadedUrl = await uploadFileToStorage(
                     fileToUpload,
-                    `/PINK_POD_SYSTEM/Avartar/${safeEmail}/${fileToUpload.name}`
+                    `avatars/${safeEmail}/${fileToUpload.name}`
                 );
-                const uploadedUrl = (result as any).url || (result as any).preview_url;
-                if (!uploadedUrl) throw new Error("Upload thành công nhưng không lấy được link ảnh.");
+
+                if (!uploadedUrl) throw new Error("Upload failed.");
                 newAvatarUrl = uploadedUrl;
             }
 

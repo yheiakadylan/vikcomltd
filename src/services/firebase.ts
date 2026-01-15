@@ -66,7 +66,7 @@ export const saveSystemSettings = async (settings: any) => {
 
 
 
-export const deleteOrder = async (orderId: string) => {
+export const deleteOrder = async (orderId: string, storagePrefix?: string) => {
     // 1. Clean up Storage files (hot storage only)
     // We call the server API to ensure it handles the prefixes correctly using server credentials or logic
     // But since we are client-side, we can just call the endpoint.
@@ -74,7 +74,7 @@ export const deleteOrder = async (orderId: string) => {
         await fetch('/api/cleanup-storage', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orderId: orderId })
+            body: JSON.stringify({ orderId: orderId, prefix: storagePrefix })
         });
     } catch (e) {
         console.warn("Storage cleanup failed (might be empty or network error), proceeding to delete doc:", e);

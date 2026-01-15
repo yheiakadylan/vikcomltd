@@ -133,7 +133,7 @@ export const translations = {
             },
             createTaskSuccess: {
                 message: 'Task Created: Order #',
-                description: 'Files uploaded to Dropbox successfully.'
+                description: 'Files uploaded to storage successfully.'
             },
             uploadComplete: {
                 message: 'Upload Complete: Order #',
@@ -298,7 +298,7 @@ export const translations = {
             },
             createTaskSuccess: {
                 message: 'Tạo Task hoàn tất: Đơn #',
-                description: 'Các file đính kèm đã được tải lên Dropbox thành công.'
+                description: 'Các file đính kèm đã được tải lên hệ thống thành công.'
             },
             uploadComplete: {
                 message: 'Upload hoàn tất: Đơn #',

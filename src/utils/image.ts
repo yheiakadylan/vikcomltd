@@ -2,7 +2,7 @@
  * Generates an optimized image URL using wsrv.nl global CDN.
  * This is used for "Display Only" images (thumbnails, previews) to improve performance.
  * 
- * @param url The original image URL (e.g. Dropbox URL)
+ * @param url The original image URL (e.g. Firebase Storage URL)
  * @param width Target width
  * @param height Target height
  * @param fit Resize strategy ('cover', 'contain', 'inside', 'outside')
@@ -13,27 +13,20 @@ export const getOptimizedImageUrl = (
     width: number,
     height: number,
     fit: 'cover' | 'contain' | 'inside' | 'outside' = 'cover',
-    version?: string | number | Date // New param for cache busting
+    version?: string | number | Date
 ): string => {
     if (!url) return '';
 
-    // 1. Convert Dropbox URL to direct link (?raw=1)
-    let directUrl = url;
-    if (url.includes('dropbox.com')) {
-        // Strip existing params
-        const clean = url.replace('?dl=0', '').replace('&dl=0', '').replace('?raw=1', '').replace('&raw=1', '');
-        // Append raw=1
-        directUrl = clean + (clean.includes('?') ? '&' : '?') + 'raw=1';
-    }
+    // 1. Convert specific URLs if needed (e.g. Google Drive, etc.) - Currently none for Firebase
 
     // 2. Encode for wsrv.nl
-    const encodedUrl = encodeURIComponent(directUrl);
+    const encodedUrl = encodeURIComponent(url);
 
     // 3. Construct wsrv.nl URL
     // &n: number of pages (for pdf/gif, usually 1 for static thumb)
     let finalUrl = `https://wsrv.nl/?url=${encodedUrl}&w=${width}&h=${height}&fit=${fit}&we&il`;
 
-    // 4. Append Version for Cache Busting
+    // 4. Append Version for Cache Busting (if provided)
     if (version) {
         // Simple timestamp format: YYYYMMDD_HHmm or just raw timestamp
         const vParams = version instanceof Date ? version.getTime() : version;
@@ -41,13 +34,4 @@ export const getOptimizedImageUrl = (
     }
 
     return finalUrl;
-};
-
-export const formatDropboxUrl = (url?: string | null) => {
-    if (!url) return '';
-    if (url.includes('dropbox.com')) {
-        const clean = url.replace('?dl=0', '').replace('&dl=0', '').replace('?raw=1', '').replace('&raw=1', '');
-        return clean + (clean.includes('?') ? '&' : '?') + 'raw=1';
-    }
-    return url;
 };
