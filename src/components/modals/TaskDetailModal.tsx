@@ -91,13 +91,13 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
 
 
 
-    const isCS = appUser?.role === 'CS' || appUser?.role === 'ADMIN'; // Changed 'admin' to 'ADMIN' based on types/index.ts Role type
+    const isCS = appUser?.role === 'CS' || appUser?.role === 'ADMIN' || appUser?.role === 'IDEA'; // Add IDEA to generic 'Manager' role context
     const isDS = appUser?.role === 'DS' || appUser?.role === 'ADMIN';
     const isAdmin = appUser?.role === 'ADMIN';
 
     const canClaim = isDS && order?.status === 'new' && !order.designerId;
     const canDSWork = isDS && (order?.designerId === user?.uid || isAdmin) && (order?.status === 'doing' || order?.status === 'need_fix');
-    const canReview = isCS && order?.status === 'in_review';
+    const canReview = (isCS || appUser?.role === 'IDEA') && order?.status === 'in_review'; // Explicitly allow IDEA role
 
     useEffect(() => {
         if (open && order) {
@@ -120,7 +120,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
         if ((!isCS && !isAdmin) || !order) return;
         setIsUrgent(checked);
         try {
-            await updateOrder(order.id, { isUrgent: checked });
+            await updateOrder(order.id, { isUrgent: checked }, false, order.collectionName);
             message.success(checked ? t('taskDetail.header.urgentOn') : t('taskDetail.header.urgentOff'));
             onUpdate();
         } catch (error) {
@@ -131,7 +131,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
 
     const fetchLogs = async () => {
         if (order) {
-            const data = await getOrderLogs(order.id);
+            const data = await getOrderLogs(order.id, order.collectionName);
             setLogs(data);
         }
     };
@@ -144,7 +144,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
             const updateData = { ...values };
             if (updateData.deadline) delete updateData.deadline; // Don't update deadline generically yet to avoid type issues
 
-            await updateOrder(order.id, updateData);
+            await updateOrder(order.id, updateData, false, order.collectionName);
             message.success(t('taskDetail.info.updateSuccess') || 'Updated successfully');
             onUpdate();
         } catch (error) {
@@ -159,13 +159,16 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
             await updateOrder(order.id, {
                 status: 'doing',
                 designerId: user.uid
-            }, true); // Use skipAutoLog
+            }, true, order.collectionName); // Use skipAutoLog
             await addOrderLog(order.id, {
                 action: 'status_change',
                 actorId: user.uid,
-                actorName: user.displayName || user.email?.split('@')[0] || 'DS', // Fallback to email prefix if needed
+                actorName: user.displayName || user.email?.split('@')[0] || 'DS',
+                actorDisplayName: user.displayName,
+                actionType: 'claim',
+                actionLabel: 'Claimed Task',
                 details: 'Claimed task'
-            });
+            }, order.collectionName);
             message.success(t('taskDetail.actions.claimSuccess') || 'Claimed');
             onUpdate();
             onCancel();
@@ -190,16 +193,19 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
             await updateOrder(order.id, {
                 status: 'need_fix',
                 description: newDesc
-            }, true); // Use skipAutoLog
+            }, true, order.collectionName); // Use skipAutoLog
 
             // Log with reason
             await addOrderLog(order.id, {
                 action: 'status_change',
                 actorId: user.uid,
                 actorName: user.displayName || user.email?.split('@')[0] || 'CS',
+                actorDisplayName: user.displayName,
+                actionType: 'reject',
+                actionLabel: 'Requested Fix',
                 details: 'Requested fix',
                 content: `Reason: ${rejectReason}`
-            });
+            }, order.collectionName);
 
             message.success('Requested fix');
             onUpdate();
@@ -213,16 +219,41 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
         }
     };
 
+    const handleManagerCheckApprove = async () => {
+        if (!order || !user) return;
+        try {
+            await updateOrder(order.id, {
+                status: 'in_review',
+                approvedByManager: true
+            }, true, order.collectionName); // Update status to in_review
+            await addOrderLog(order.id, {
+                action: 'manager_approve',
+                actorId: user.uid,
+                actorName: user.displayName || user.email?.split('@')[0] || 'Manager',
+                actorDisplayName: user.displayName,
+                actionType: 'manager_approve',
+                actionLabel: 'Manager Approved',
+                details: 'Manager Approved (Check passed)'
+            }, order.collectionName);
+            message.success('Manager Approved');
+            onUpdate();
+            onCancel();
+        } catch (e) { message.error('Error'); }
+    };
+
     const handleApprove = async () => {
         if (!order || !user) return;
         try {
-            await updateOrder(order.id, { status: 'done' }, true); // Use skipAutoLog
+            await updateOrder(order.id, { status: 'done' }, true, order.collectionName); // Use skipAutoLog
             await addOrderLog(order.id, {
                 action: 'status_change',
                 actorId: user.uid,
                 actorName: user.displayName || user.email?.split('@')[0] || 'CS',
+                actorDisplayName: user.displayName,
+                actionType: 'approve',
+                actionLabel: 'Approved Design (Done)',
                 details: 'Approved design'
-            });
+            }, order.collectionName);
 
             // Trigger cleanup (Fire and forget)
             fetch('/api/cleanup-storage', {
@@ -250,7 +281,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
             // Upload staged files
             for (const file of stagedFiles) {
                 // Generate path consistent with storage structure
-                const baseStoragePath = generateStoragePath(order as any);
+                const baseStoragePath = generateStoragePath(order as any, order.collectionName);
                 const fullStoragePath = `${baseStoragePath}/Designs/${file.name}`;
 
                 // Remove leading slash for Firebase Storage
@@ -265,19 +296,31 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                 });
             }
 
+            // BYPASS LOGIC:
+            // If the task was ALREADY approved by manager in a previous cycle (e.g. Reject -> Fix -> Submit),
+            // it should go directly to IN_REVIEW, bypassing CHECK.
+            // If it's the first time or manager never approved, go to CHECK.
+            const nextStatus = order.approvedByManager ? 'in_review' : 'check';
+            const logDetails = order.approvedByManager ? 'Submitted for Review (Bypassed Check)' : 'Submitted for Manager Check';
+
             await updateOrder(order.id, {
-                status: 'in_review', // Move to review
-                designFiles: uploadedFiles
-            }, true); // Use skipAutoLog
+                status: nextStatus,
+                designFiles: uploadedFiles,
+                // Do NOT reset approvedByManager if it was already true.
+                // approvedByManager: false  <-- REMOVE THIS to keep the bypass flag active
+            }, true, order.collectionName); // Use skipAutoLog
 
             await addOrderLog(order.id, {
                 action: 'status_change',
                 actorId: user.uid,
                 actorName: user.displayName || user.email?.split('@')[0] || 'DS',
-                details: 'Submitted designs for review'
-            });
+                actorDisplayName: user.displayName,
+                actionType: 'submit',
+                actionLabel: nextStatus === 'check' ? 'Submitted for Check' : 'Submitted for Review',
+                details: logDetails
+            }, order.collectionName);
 
-            message.success('Submitted');
+            message.success(nextStatus === 'check' ? 'Submitted for Check' : 'Submitted for Review');
             onUpdate();
             onCancel();
         } catch (e) {
@@ -306,7 +349,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
         try {
             const attachments: FileAttachment[] = [];
             for (const file of commentFiles) {
-                const baseStoragePath = generateStoragePath(order as any);
+                const baseStoragePath = generateStoragePath(order as any, order.collectionName);
                 const fullStoragePath = `${baseStoragePath}/Comments/${file.name}`;
                 const firebasePath = fullStoragePath.startsWith('/') ? fullStoragePath.substring(1) : fullStoragePath;
 
@@ -318,10 +361,13 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                 action: 'comment',
                 actorId: user.uid,
                 actorName: user.displayName || user.email?.split('@')[0] || 'User',
+                actorDisplayName: user.displayName,
+                actionType: 'comment',
+                actionLabel: 'Commented',
                 details: 'Commented',
                 content: comment,
                 attachments
-            });
+            }, order.collectionName);
             setComment('');
             setCommentFiles([]);
             fetchLogs();
@@ -555,6 +601,27 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                             {t('taskDetail.actions.claim')}
                                                         </Button>
                                                     )}
+                                                    {/* Manager Check Phase Actions */}
+                                                    {isAdmin && order?.status === 'check' && (
+                                                        <>
+                                                            <Button
+                                                                danger
+                                                                onClick={handleReject}
+                                                                icon={<RollbackOutlined />}
+                                                            >
+                                                                Reject (Fix)
+                                                            </Button>
+                                                            <Button
+                                                                type="primary"
+                                                                onClick={handleManagerCheckApprove}
+                                                                style={{ background: '#722ed1', borderColor: '#722ed1', fontWeight: 600 }}
+                                                                icon={<CheckOutlined />}
+                                                            >
+                                                                Manager Approve
+                                                            </Button>
+                                                        </>
+                                                    )}
+
                                                     {canReview && (
                                                         <>
                                                             <Button
@@ -564,6 +631,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                             >
                                                                 {t('taskDetail.actions.requestFix')}
                                                             </Button>
+
+                                                            {/* Standard Approve (Done) - Only if in_review (implied approved by flow, or explicitly) */}
                                                             <Button
                                                                 type="primary"
                                                                 onClick={handleApprove}
@@ -744,7 +813,11 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                         children: (
                                                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                    <span style={{ fontWeight: 600, fontSize: 13 }}>{log.actorName}</span>
+                                                                    <span style={{ fontWeight: 600, fontSize: 13 }}>
+                                                                        {log.actorDisplayName || log.actorName}
+                                                                        {log.actionLabel && <span style={{ fontWeight: 400, color: '#666', marginLeft: 4 }}> • {log.actionLabel}</span>}
+                                                                        {!log.actionLabel && log.details && <span style={{ fontWeight: 400, color: '#666', marginLeft: 4 }}> • {log.details}</span>}
+                                                                    </span>
                                                                     <span style={{ fontSize: 11, color: '#999' }}>
                                                                         {log.createdAt?.seconds ? dayjs(log.createdAt.seconds * 1000).format('DD/MM HH:mm') : 'Just now'}
                                                                     </span>

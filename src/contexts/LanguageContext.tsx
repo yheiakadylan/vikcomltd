@@ -10,8 +10,8 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    // Default to 'en' as requested
-    const [language, setLanguage] = useState<Language>('en');
+    // Default to 'vi'
+    const [language, setLanguage] = useState<Language>('vi');
 
     const t = (path: string): string => {
         const keys = path.split('.');

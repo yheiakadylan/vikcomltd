@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import type { Order } from '../types';
 
-export const generateStoragePath = (order: Partial<Order> & { readableId: string, title: string }) => {
+export const generateStoragePath = (order: Partial<Order> & { readableId: string, title: string }, collectionName: string = 'tasks') => {
     const year = order.created_at ? dayjs((order.created_at as any).toDate ? (order.created_at as any).toDate() : order.created_at).format('YYYY') : dayjs().format('YYYY');
     const month = order.created_at ? dayjs((order.created_at as any).toDate ? (order.created_at as any).toDate() : order.created_at).format('MM') : dayjs().format('MM');
 
@@ -14,6 +14,8 @@ export const generateStoragePath = (order: Partial<Order> & { readableId: string
 
     const skuPart = order.sku ? `${order.sku}_` : '';
 
-    // Format: /PINK_POD_SYSTEM/{Year}/{Month}/{ReadableID}_[SKU_]{Title}
-    return `/PINK_POD_SYSTEM/${year}/${month}/${order.readableId}_${skuPart}${safeTitle}`;
+    // Format: /PINK_POD_SYSTEM/{Type}/{Year}/{Month}/{ReadableID}_[SKU_]{Title}
+    // Type: FULFILL (for tasks) or IDEAS (for ideas)
+    const rootDir = collectionName === 'ideas' ? '/PINK_POD_SYSTEM/IDEAS' : '/PINK_POD_SYSTEM/FULFILL';
+    return `${rootDir}/${year}/${month}/${order.readableId}_${skuPart}${safeTitle}`;
 };

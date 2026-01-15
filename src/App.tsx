@@ -20,9 +20,20 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
   // 1. Chưa login -> Đá về Login
   if (!user) return <Navigate to="/login" replace />;
 
-  // 2. Login rồi nhưng không đúng quyền -> Đá về Dashboard (hoặc trang 403)
+  // 2. Login rồi nhưng không đúng quyền
   if (allowedRoles && (!appUser || !allowedRoles.includes(appUser.role))) {
-    return <Navigate to="/" replace />;
+    // Smart Redirect Strategy based on Role
+    // If user is IDEA role -> Send to Idea board
+    if (appUser?.role === 'IDEA') {
+      return <Navigate to="/board/idea" replace />;
+    }
+    // If user is CS role -> Send to Fulfill board
+    if (appUser?.role === 'CS') {
+      return <Navigate to="/board/fulfill" replace />;
+    }
+
+    // Default Fallback (DS/Admin or others) -> Fulfill
+    return <Navigate to="/board/fulfill" replace />;
   }
 
   return <>{children}</>;
@@ -35,17 +46,35 @@ const AppRoutes = () => {
         <Route path="/login" element={<Login />} />
 
 
-        {/* Route cho mọi người (CS/DS/Admin) */}
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Dashboard />
+        <Route path="/" element={<Navigate to="/board/fulfill" replace />} />
+
+        {/* Fulfill Board - ADMIN, CS, DS */}
+        <Route path="/board/fulfill" element={
+          <ProtectedRoute allowedRoles={['ADMIN', 'CS', 'DS']}>
+            <Dashboard mode="fulfill" />
           </ProtectedRoute>
         } />
-        <Route path="/:status" element={
-          <ProtectedRoute>
-            <Dashboard />
+        <Route path="/board/fulfill/:status" element={
+          <ProtectedRoute allowedRoles={['ADMIN', 'CS', 'DS']}>
+            <Dashboard mode="fulfill" />
           </ProtectedRoute>
         } />
+
+        {/* Ideas Board - ADMIN, DS, IDEA */}
+        {/* Note: Collection name is 'ideas', but route is singular 'idea' per request */}
+        <Route path="/board/idea" element={
+          <ProtectedRoute allowedRoles={['ADMIN', 'DS', 'IDEA']}>
+            <Dashboard mode="idea" />
+          </ProtectedRoute>
+        } />
+        <Route path="/board/idea/:status" element={
+          <ProtectedRoute allowedRoles={['ADMIN', 'DS', 'IDEA']}>
+            <Dashboard mode="idea" />
+          </ProtectedRoute>
+        } />
+
+        {/* Legacy Support */}
+        <Route path="/:status" element={<Navigate to="/board/fulfill" replace />} />
 
         {/* Route chỉ cho Admin và CS */}
         <Route path="/admin" element={

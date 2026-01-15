@@ -1,4 +1,4 @@
-export type Role = 'ADMIN' | 'CS' | 'DS';
+export type Role = 'ADMIN' | 'CS' | 'DS' | 'IDEA';
 
 export interface AppUser {
     uid: string;
@@ -12,7 +12,7 @@ export interface AppUser {
 export type User = AppUser & { avatarUrl?: string }; // Alias for Admin component compatibility or migration
 
 
-export type OrderStatus = 'draft' | 'new' | 'doing' | 'in_review' | 'need_fix' | 'done' | 'archived';
+export type OrderStatus = 'draft' | 'new' | 'doing' | 'check' | 'in_review' | 'need_fix' | 'done' | 'archived';
 
 export interface FileAttachment {
     name: string;
@@ -44,6 +44,8 @@ export interface Order {
 
     created_at?: any;
     updatedAt?: any;
+    collectionName?: string;
+    approvedByManager?: boolean;
 }
 
 export type UploadStatus = 'pending' | 'uploading' | 'success' | 'error' | 'retrying' | 'paused';
@@ -63,6 +65,7 @@ export interface UploadItem {
 
     // Result
     resultUrl?: string;
+    collectionName?: string;
 }
 
 export interface OrderLog {
@@ -71,7 +74,12 @@ export interface OrderLog {
     actorId: string;
     actorName: string;
     details?: string;
-    content?: string;
+    content?: string; // Keep
     attachments?: FileAttachment[];
     createdAt?: any;
+
+    // NEW FIELDS
+    actorDisplayName?: string;
+    actionType?: string; // e.g. 'status_change', 'comment', 'assign'
+    actionLabel?: string; // e.g. "Changed status to IN_REVIEW"
 }

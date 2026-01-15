@@ -12,9 +12,12 @@ interface OrderCardProps {
     isUrgent: boolean;
     isCS: boolean;
     isDS: boolean;
+    isAdmin?: boolean;
     onOpenDetail: (order: Order) => void;
     onOpenGiveBack: (e: React.MouseEvent, order: Order) => void;
     onDelete: (orderId: string) => void;
+    onQuickApprove?: (e: React.MouseEvent, order: Order) => void;
+    onQuickReject?: (e: React.MouseEvent, order: Order) => void;
 }
 
 const OrderCard: React.FC<OrderCardProps> = ({
@@ -22,9 +25,12 @@ const OrderCard: React.FC<OrderCardProps> = ({
     isUrgent,
     isCS,
     isDS,
+    isAdmin,
     onOpenDetail,
     onOpenGiveBack,
-    onDelete
+    onDelete,
+    onQuickApprove,
+    onQuickReject
 }) => {
     const { t } = useLanguage();
     const deadlineDisplay = order.deadline
@@ -63,6 +69,19 @@ const OrderCard: React.FC<OrderCardProps> = ({
                         <div className="text-gray-300"><CloudUploadOutlined style={{ fontSize: 32, color: '#ccc' }} /></div>
                     )}
                     {isUrgent && <div style={{ position: 'absolute', top: 0, right: 0, background: '#f5222d', color: '#fff', fontSize: 12, fontWeight: 'bold', padding: '4px 8px', borderRadius: '0 0 0 8px' }}> 🔥</div>}
+
+                    {/* Status Badges */}
+                    {order.status === 'check' && (
+                        <div style={{ position: 'absolute', top: 0, left: 0, background: '#faad14', color: '#fff', fontSize: 11, fontWeight: '600', padding: '4px 8px', borderRadius: '0 0 8px 0', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
+                            WAIT CHECK
+                        </div>
+                    )}
+
+                    {order.status === 'in_review' && !order.approvedByManager && (
+                        <div style={{ position: 'absolute', top: 0, left: 0, background: '#722ed1', color: '#fff', fontSize: 11, fontWeight: '600', padding: '4px 8px', borderRadius: '0 0 8px 0', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
+                            Wait Approval
+                        </div>
+                    )}
                     {
                         isCS && (
                             <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }} onClick={e => e.stopPropagation()}>
@@ -76,6 +95,19 @@ const OrderCard: React.FC<OrderCardProps> = ({
             }
             actions={
                 [
+                    // Manager Check Actions
+                    (isAdmin && order.status === 'check' && onQuickApprove && onQuickReject) ? (
+                        <Popconfirm title="Reject to Fix?" onConfirm={(e: any) => onQuickReject(e, order)} onCancel={(e) => e?.stopPropagation()} okText="Reject" cancelText="Cancel">
+                            <Button type="text" danger size="small">Reject</Button>
+                        </Popconfirm>
+                    ) : null,
+                    (isAdmin && order.status === 'check' && onQuickApprove) ? (
+                        <Popconfirm title="Approve for Review?" onConfirm={(e: any) => onQuickApprove(e, order)} onCancel={(e) => e?.stopPropagation()} okText="Approve" cancelText="Cancel">
+                            <Button type="text" style={{ color: '#52c41a' }} size="small">Approve</Button>
+                        </Popconfirm>
+                    ) : null,
+
+                    // Original DS Action
                     (isDS && order.status === 'doing') ? <Button type="text" danger icon={<RollbackOutlined />} onClick={(e) => onOpenGiveBack(e, order)}>{t('dashboard.card.giveBack')}</Button> : null,
                 ].filter(Boolean) as React.ReactNode[]
             }

@@ -4,7 +4,30 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================================
-    // 1. HELPER FUNCTIONS
+    // 1. LEGACY WORKFLOW & PERMISSIONS (Old System)
+    // =========================================================
+
+    // Rules cho Collection phân quyền (AI LÀ AI?)
+    match /user_roles/{userId} {
+      allow read: if request.auth.uid == userId ||
+                  get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.role == 'owner';
+      
+      allow create, delete: if get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.role == 'owner';
+      
+      allow update: if get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.role == 'owner'
+                    || (request.auth.uid == userId 
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['notificationSettings', 'fcmTokens']));
+    }
+
+    // Rules cho Dữ liệu (DỮ LIỆU CỦA AI?)
+    match /user/{teamId}/{documents=**} {
+      allow read, write: if exists(/databases/$(database)/documents/user_roles/$(request.auth.uid)) &&
+                          get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.teamId == teamId;
+    }
+
+    // =========================================================
+    // 2. NEW BOARD SYSTEM HELPERS
     // =========================================================
 
     function isSignedIn() {
@@ -33,8 +56,23 @@ service cloud.firestore {
       return isSignedIn() && getRole() == 'DS'; 
     }
     
-    function isManager() {
+    function isIdeaRole() { 
+      return isSignedIn() && getRole() == 'IDEA'; 
+    }
+
+    // Alias for Fulfill Manager (CS/Admin)
+    function isFulfillManager() {
       return isAdmin() || isCS();
+    }
+    
+    // Alias for backward compatibility if needed, or clarity
+    function isManager() {
+      return isFulfillManager();
+    }
+
+    // Alias for Idea Manager (Idea/Admin)
+    function isIdeaManager() {
+      return isAdmin() || isIdeaRole();
     }
 
     function isMyTask(resourceData) {
@@ -46,56 +84,66 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // 2. USERS COLLECTION
+    // 3. USERS COLLECTION (App Users)
     // =========================================================
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()); // Bootstrap + Admin Create
       allow update: if isAdmin() || request.auth.uid == userId;
       allow delete: if isAdmin();
     }
 
     // =========================================================
-    // 3. TASKS COLLECTION (MAIN COLLECTION)
+    // 4. TASKS COLLECTION (FULFILLMENT BOARD)
     // =========================================================
     match /tasks/{taskId} {
-
       // --- READ ---
       allow read: if isSignedIn() && (
-        isManager() || 
-        (isDS() && (resource.data.status == 'new' || isMyTask(resource.data)))
+        isAdmin() || 
+        // CS Access: Explicitly allow specific statuses
+        (isCS() && (
+          resource.data.status in ['new', 'doing', 'need_fix', 'done'] ||
+          (resource.data.status == 'in_review' && (resource.data.approvedByManager == true || isMyTask(resource.data)))
+        )) ||
+        // DS Access: New or Assigned (but NOT 'check')
+        (isDS() && (
+          resource.data.status == 'new' || 
+          (isMyTask(resource.data) && resource.data.status != 'check')
+        ))
       );
 
       // --- CREATE ---
-      // Allow CS/ADMIN to create.
-      allow create: if isSignedIn() && isManager();
+      allow create: if isSignedIn() && isFulfillManager();
 
       // --- UPDATE ---
-      
-      // Managers can update anything
-      allow update: if isSignedIn() && isManager();
+      allow update: if isSignedIn() && isFulfillManager();
 
-      // Upload Context: Allow Managers OR Owner to update files
+      // Manager/Owner file upload
       allow update: if isSignedIn() && 
-        (isManager() || isMyTask(resource.data)) &&
+        (isFulfillManager() || isMyTask(resource.data)) &&
         onlyUpdating(['mockupUrl', 'customerFiles', 'designFiles', 'updatedAt']);
 
-      // DS: Claim task
+      // DS: Claim
       allow update: if isSignedIn() && isDS() && 
         resource.data.status == 'new' && 
         request.resource.data.status == 'doing' &&
         request.resource.data.designerId == request.auth.uid &&
         onlyUpdating(['status', 'designerId', 'updatedAt']);
       
-      // DS: Submit work
+      // DS: Submit (To CHECK or IN_REVIEW if Approved)
       allow update: if isSignedIn() && isDS() && 
         (resource.data.status == 'doing' || resource.data.status == 'need_fix') &&
-        request.resource.data.status == 'in_review' &&
+        (
+          // Case 1: Normal Submit -> CHECK
+          (request.resource.data.status == 'check') || 
+          // Case 2: Bypass Submit -> IN_REVIEW (Only if already approved)
+          (request.resource.data.status == 'in_review' && resource.data.approvedByManager == true && request.resource.data.approvedByManager == true)
+        ) &&
         isMyTask(resource.data) &&
-        onlyUpdating(['status', 'designFiles', 'updatedAt']);
+        onlyUpdating(['status', 'designFiles', 'updatedAt', 'approvedByManager']);
 
-      // DS: Give back task
-      allow update: if isSignedIn() && isDS() && 
+      // DS/Manager: Give back (Return task)
+      allow update: if isSignedIn() && (isDS() || isFulfillManager()) && 
         resource.data.status == 'doing' &&
         request.resource.data.status == 'new' &&
         isMyTask(resource.data) &&
@@ -103,17 +151,84 @@ service cloud.firestore {
         onlyUpdating(['status', 'designerId', 'updatedAt']);
 
       // --- DELETE ---
-      allow delete: if isSignedIn() && isManager();
+      allow delete: if isSignedIn() && isFulfillManager();
 
-      // --- LOGS SUBCOLLECTION ---
+      // --- LOGS ---
       match /logs/{logId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn();
+        allow delete: if isSignedIn();
       }
     }
 
     // =========================================================
-    // 4. LOGS COLLECTION (GLOBAL)
+    // 5. IDEAS COLLECTION (IDEA BOARD)
+    // =========================================================
+    match /ideas/{ideaId} {
+      // --- READ ---
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        // Idea Role Access: Explicitly allow specific statuses
+        (isIdeaRole() && (
+          resource.data.status in ['new', 'doing', 'need_fix', 'done'] ||
+          (resource.data.status == 'in_review' && (resource.data.approvedByManager == true || isMyTask(resource.data)))
+        )) ||
+        // DS Access
+        (isDS() && (
+          resource.data.status == 'new' || 
+          (isMyTask(resource.data) && resource.data.status != 'check')
+        ))
+      );
+
+      // --- CREATE ---
+      allow create: if isSignedIn() && isIdeaManager();
+
+      // --- UPDATE ---
+      allow update: if isSignedIn() && isIdeaManager();
+
+      allow update: if isSignedIn() && 
+        (isIdeaManager() || isMyTask(resource.data)) &&
+        onlyUpdating(['mockupUrl', 'customerFiles', 'designFiles', 'updatedAt']);
+
+      // DS Actions
+      allow update: if isSignedIn() && isDS() && 
+        resource.data.status == 'new' && 
+        request.resource.data.status == 'doing' &&
+        request.resource.data.designerId == request.auth.uid &&
+        onlyUpdating(['status', 'designerId', 'updatedAt']);
+      
+      // DS: Submit (To CHECK or IN_REVIEW if Approved)
+      allow update: if isSignedIn() && isDS() && 
+        (resource.data.status == 'doing' || resource.data.status == 'need_fix') &&
+        (
+          // Case 1: Normal Submit -> CHECK
+          (request.resource.data.status == 'check') || 
+          // Case 2: Bypass Submit -> IN_REVIEW (Only if already approved)
+          (request.resource.data.status == 'in_review' && resource.data.approvedByManager == true && request.resource.data.approvedByManager == true)
+        ) &&
+        isMyTask(resource.data) &&
+        onlyUpdating(['status', 'designFiles', 'updatedAt', 'approvedByManager']);
+
+      // DS/Manager: Give back (Return idea)
+      allow update: if isSignedIn() && (isDS() || isIdeaManager()) && 
+        resource.data.status == 'doing' &&
+        request.resource.data.status == 'new' &&
+        isMyTask(resource.data) &&
+        request.resource.data.designerId == null &&
+        onlyUpdating(['status', 'designerId', 'updatedAt']);
+
+      // --- DELETE ---
+      allow delete: if isSignedIn() && isIdeaManager();
+
+      match /logs/{logId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn();
+        allow delete: if isSignedIn();
+      }
+    }
+
+    // =========================================================
+    // 6. SHARED LOGS (GLOBAL)
     // =========================================================
     match /logs/{logId} {
       allow read: if isSignedIn();
@@ -122,12 +237,27 @@ service cloud.firestore {
     }
     
     // =========================================================
-    // 5. SETTINGS COLLECTION
+    // 7. SETTINGS
     // =========================================================
     match /settings/{docId} {
       allow read: if isSignedIn();
       allow create, delete: if isAdmin();
-      allow update: if isSignedIn() && isAdmin();
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        // Allow any user to update dropbox token (for auto-refresh)
+        (docId == 'system' && onlyUpdating(['dropbox']))
+      );
     }
+    
+    // =========================================================
+    // 8. SYNC QUEUE
+    // =========================================================
+    match /sync_queue/{queueId} {
+      allow read: if isSignedIn() && isManager();
+      allow create: if isSignedIn(); // Any user can queue files
+      allow update: if false; // Only server can update queue status
+      allow delete: if isAdmin(); // Only admin can manually delete
+    }
+
   }
 }

@@ -34,36 +34,16 @@ const VNFlag = () => (
 const LanguageSwitcher: React.FC = () => {
     const { language, setLanguage } = useLanguage();
 
-    const switchStyle = (isActive: boolean) => ({
-        cursor: 'pointer',
-        opacity: isActive ? 1 : 0.4,
-        transform: isActive ? 'scale(1.1)' : 'scale(1)',
-        transition: 'all 0.2s ease',
-        border: isActive ? '2px solid #1677FF' : '1px solid #d9d9d9',
-        borderRadius: 4,
-        padding: 2,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxShadow: isActive ? '0 2px 4px rgba(22, 119, 255, 0.2)' : 'none'
-    });
-
     return (
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <div
-                onClick={() => setLanguage('en')}
-                style={switchStyle(language === 'en')}
-                title="English"
-            >
-                <USFlag />
-            </div>
-            <div
-                onClick={() => setLanguage('vi')}
-                style={switchStyle(language === 'vi')}
-                title="Tiếng Việt"
-            >
-                <VNFlag />
-            </div>
+        <div
+            onClick={() => setLanguage(language === 'en' ? 'vi' : 'en')}
+            className="lang-switcher-compact"
+            title={language === 'en' ? "Switch to Vietnamese" : "Switch to English"}
+        >
+            {language === 'en' ? <USFlag /> : <VNFlag />}
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>
+                {language === 'en' ? 'EN' : 'VN'}
+            </span>
         </div>
     );
 };

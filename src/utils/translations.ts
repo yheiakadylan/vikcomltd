@@ -70,7 +70,9 @@ export const translations = {
                 clickToUpload: 'Click or Drag & Drop multiple images',
                 waitingUpload: 'Files will be uploaded upon creation',
                 staged: 'Files waiting for upload',
-                submit: 'Create Task'
+                submit: 'Create Task',
+                ideaTeam: 'Team Name',
+                enterIdeaTeam: 'Enter Team Name...'
             }
         },
         taskDetail: {
@@ -235,7 +237,9 @@ export const translations = {
                 clickToUpload: 'Click hoặc Kéo thả nhiều ảnh vào đây',
                 waitingUpload: 'File sẽ chờ upload khi bấm "Tạo Task"',
                 staged: 'File chờ upload',
-                submit: 'Tạo Task'
+                submit: 'Tạo Task',
+                ideaTeam: 'Tên Team',
+                enterIdeaTeam: 'Nhập tên Team...'
             }
         },
         taskDetail: {

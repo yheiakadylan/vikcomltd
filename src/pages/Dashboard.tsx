@@ -24,7 +24,9 @@ import OrderRow from '../components/dashboard/OrderRow';
 
 const { Content } = Layout;
 
-const Dashboard: React.FC = () => {
+const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }) => {
+    const collectionName = mode === 'idea' ? 'ideas' : 'tasks';
+    const accentColor = mode === 'idea' ? '#F9F0FF' : '#E6F7FF'; // Purple vs Blue
     const { message } = App.useApp();
     const { appUser: user } = useAuth();
     const { t } = useLanguage();
@@ -32,9 +34,10 @@ const Dashboard: React.FC = () => {
     const navigate = useNavigate();
 
     // Validate status or default to 'new'
-    const validStatuses: OrderStatus[] = ['new', 'doing', 'in_review', 'need_fix', 'done'];
+    const validStatuses: OrderStatus[] = ['new', 'doing', 'check', 'in_review', 'need_fix', 'done'];
     // const activeTab: OrderStatus = (status && validStatuses.includes(status as OrderStatus)) ? (status as OrderStatus) : 'new'; // Original line
-    const [activeTab, setActiveTab] = usePersistedState<string>('activeTab', 'new'); // Persisted
+    const [activeTab, setActiveTab] = usePersistedState<string>(`activeTab_${mode}`, 'new'); // Persisted per board
+
 
     // Sync URL status to activeTab
     useEffect(() => {
@@ -49,15 +52,24 @@ const Dashboard: React.FC = () => {
     const [total, setTotal] = useState(0);
     const pageCursors = React.useRef<Map<number, any>>(new Map());
 
-    const [orders, setOrders] = useState<Order[]>([]);
-    const [loading, setLoading] = useState(true);
     const [searchText, setSearchText] = useState('');
     const [executedSearchTerm, setExecutedSearchTerm] = useState('');
     const isAutoSwitchingTab = React.useRef(false);
 
+    // State Separation
+    const [tabOrders, setTabOrders] = useState<Order[]>([]);
+    const [searchOrders, setSearchOrders] = useState<Order[] | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    // Derived Orders for Display
+    const orders = React.useMemo(() => {
+        return executedSearchTerm ? (searchOrders || []) : tabOrders;
+    }, [executedSearchTerm, searchOrders, tabOrders]);
+
     // View Mode State
     // const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid'); // Original line
-    const [viewMode, setViewMode] = usePersistedState<'list' | 'grid'>('viewMode', 'grid'); // Persisted
+    const [viewMode, setViewMode] = usePersistedState<'list' | 'grid'>(`viewMode_${mode}`, 'grid'); // Persisted per board
+
 
     // Modal States
     const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
@@ -67,9 +79,15 @@ const Dashboard: React.FC = () => {
     const [isGiveBackModalOpen, setIsGiveBackModalOpen] = useState(false);
 
     const isCS = user?.role === 'CS' || user?.role === 'ADMIN';
-    const isDS = user?.role === 'DS';
+    const isIdea = user?.role === 'IDEA' || user?.role === 'ADMIN';
+    const isDS = user?.role === 'DS' || user?.role === 'ADMIN'; // DS or Admin acts as worker sometimes or just viewer
+    const isAdmin = user?.role === 'ADMIN';
 
-    // Reset Page on Tab change
+    // Permission to Create Task
+    const canCreate = mode === 'idea' ? isIdea : isCS;
+
+
+    // Reset Page on Tab change or Search change
     useEffect(() => {
         setPage(1);
         pageCursors.current.clear();
@@ -78,25 +96,38 @@ const Dashboard: React.FC = () => {
             // If switching automatically due to search, DON'T clear search
             isAutoSwitchingTab.current = false;
         } else {
-            // Manual tab click -> Clear search
-            if (executedSearchTerm) {
-                setSearchText('');
-                setExecutedSearchTerm('');
-            }
+            // Manual tab click -> Clear search (only if tab changed, not search term)
+            // But this effect runs on executedSearchTerm too?
+            // We want:
+            // 1. Tab Change -> Clear Search
+            // 2. Search Change -> Reset Page (Handled in onChange/onSearch)
         }
     }, [activeTab]);
+
+    // Separate Effect for Search Mode Switch to reset cursors
+    useEffect(() => {
+        pageCursors.current.clear();
+        if (executedSearchTerm) {
+            setSearchOrders([]); // Clear previous search results visually
+        }
+    }, [executedSearchTerm]);
 
     // 1. Data Loading (Paginated + Search)
     useEffect(() => {
         if (!user) return;
 
+        let isMounted = true; // Track mount state
         setLoading(true);
         let unsubscribe: (() => void) | undefined;
         let constraints: any[] = [];
 
-        import('../services/firebase').then(({ where }) => {
+        import('../services/firebase').then(({ where, getOrdersCount, subscribeToOrders }) => {
+            if (!isMounted) return;
+
+            const isSearchMode = !!executedSearchTerm.trim();
+
             // SEARCH MODE
-            if (executedSearchTerm.trim()) {
+            if (isSearchMode) {
                 const term = executedSearchTerm.trim();
                 console.log("🔍 Server-side Search (ID only):", term);
 
@@ -108,33 +139,58 @@ const Dashboard: React.FC = () => {
             }
             // TAB / FILTER MODE
             else {
-                if (isDS) {
+                // Filtering Logic
+                // 1. Strict DS (Regular DS, not Admin acting as DS)
+                if (user.role === 'DS') {
                     if (activeTab === 'new') {
                         constraints.push(where('status', '==', 'new'));
                     } else {
                         constraints.push(where('designerId', '==', user.uid));
                         constraints.push(where('status', '==', activeTab));
                     }
-                } else {
-                    if (activeTab !== 'new' && activeTab !== 'doing' && activeTab !== 'in_review' && activeTab !== 'need_fix' && activeTab !== 'done') {
-                        constraints.push(where('status', '==', activeTab));
-                    } else {
-                        constraints.push(where('status', '==', activeTab));
+                    // DS Restriction: Cannot see check tab (handled by tabItems)
+                    // If they visit /check manually, they get no data due to designerId filter (unless they are assigned? No, Check has no assignee per se, but task keeps designerId)
+                    // If task is in 'check', DS shouldn't see it?
+                    if (activeTab === 'check') {
+                        // Force empty
+                        constraints.push(where('status', '==', 'impossible_status'));
+                    }
+                }
+                // 2. Admin / CS / Idea
+                else {
+                    // Standard filtering
+                    constraints.push(where('status', '==', activeTab));
+
+                    // APPROVAL LOGIC
+                    // For 'in_review', NON-ADMINS (CS, IDEA) must only see approved tasks.
+                    // This matches Firestore Rule: status == 'in_review' requires approvedByManager==true (or isMyTask).
+                    // We enforce approvedByManager==true here to satisfy the rule for the general list.
+                    if (activeTab === 'in_review' && !isAdmin) {
+                        console.log("🔒 Securing View: Adding manager approval constraint");
+                        constraints.push(where('approvedByManager', '==', true));
+                    }
+
+                    // CHECK TAB LOGIC
+                    // Only Admin can see Check tab content
+                    if (activeTab === 'check' && !isAdmin) {
+                        // This should theoretically be handled by the UI not showing the tab, 
+                        // but if they force the URL, we block it.
+                        constraints.push(where('status', '==', 'impossible_status_block'));
                     }
                 }
             }
 
             // 1. Get Total Count (Only on first page or tab/search change)
+            // We should fetch count if page is 1
             if (page === 1) {
-                import('../services/firebase').then(({ getOrdersCount }) => {
-                    getOrdersCount(constraints).then(count => {
-                        setTotal(count);
-                        // Handle No Match Alert here or in subscribe?
-                        // If count is 0 and we are searching, we know immediately.
-                        if (executedSearchTerm.trim() && count === 0) {
-                            message.warning(t('dashboard.messages.noOrderFound') || 'Order not found / Không tìm thấy đơn hàng');
-                        }
-                    });
+                getOrdersCount(constraints, collectionName).then(count => {
+                    if (!isMounted) return;
+                    setTotal(count);
+                    // Handle No Match Alert here or in subscribe?
+                    // If count is 0 and we are searching, we know immediately.
+                    if (isSearchMode && count === 0) {
+                        message.warning(t('dashboard.messages.noOrderFound') || 'Order not found / Không tìm thấy đơn hàng');
+                    }
                 });
             }
 
@@ -142,37 +198,61 @@ const Dashboard: React.FC = () => {
             const startAfterDoc = page > 1 ? pageCursors.current.get(page - 1) : null;
 
             // 3. Subscribe
-            import('../services/firebase').then(({ subscribeToOrders }) => {
-                unsubscribe = subscribeToOrders((newOrders, lastDoc) => {
-                    setOrders(newOrders);
-                    if (lastDoc) {
-                        pageCursors.current.set(page, lastDoc);
-                    }
+            unsubscribe = subscribeToOrders((newOrders, lastDoc) => {
+                if (!isMounted) return;
 
-                    // Auto-Switch Tab Logic
-                    if (executedSearchTerm.trim() && newOrders.length > 0) {
-                        const foundOrder = newOrders[0]; // Assuming ID search returns 1 result
-                        // Check if order is in a different tab and valid status
-                        if (validStatuses.includes(foundOrder.status) && foundOrder.status !== activeTab) {
-                            console.log(`Auto - switching tab from ${activeTab} to ${foundOrder.status} `);
-                            isAutoSwitchingTab.current = true;
-                            navigate('/' + foundOrder.status);
-                        }
+                // Client-side Security Filter (Crucial for Search Mode)
+                // Filter out 'check' tasks for non-Admins
+                const safeOrders = newOrders.filter(o => {
+                    if (o.status === 'check' && !isAdmin) {
+                        return false;
                     }
+                    return true;
+                });
 
-                    setLoading(false);
-                }, (error) => {
-                    console.error("Error:", error);
-                    setLoading(false);
-                    if (error?.code === 'permission-denied') message.error(t('dashboard.messages.noPermission'));
-                }, constraints, pageSize, startAfterDoc);
-            });
+                // ROUTE DATA TO CORRECT STATE
+                if (isSearchMode) {
+                    setSearchOrders(safeOrders);
+                } else {
+                    setTabOrders(safeOrders);
+                    setSearchOrders(null); // Ensure search is null when in tab mode
+                }
+
+                if (lastDoc) {
+                    pageCursors.current.set(page, lastDoc);
+                }
+
+                // Auto-Switch Tab Logic
+                if (isSearchMode && safeOrders.length > 0) {
+                    const foundOrder = safeOrders[0]; // Assuming ID search returns 1 result
+                    // Check if order is in a different tab and valid status
+                    if (validStatuses.includes(foundOrder.status) && foundOrder.status !== activeTab) {
+                        console.log(`Auto - switching tab from ${activeTab} to ${foundOrder.status} `);
+                        isAutoSwitchingTab.current = true;
+                        // Use correct board path
+                        navigate(`/board/${mode === 'idea' ? 'idea' : 'fulfill'}/${foundOrder.status}`);
+                    }
+                } else if (isSearchMode && newOrders.length > 0 && safeOrders.length === 0) {
+                    // Case: Found in DB but filtered out by Security
+                    message.warning(t('dashboard.messages.noPermission') || 'No permission to view this task');
+                }
+
+                setLoading(false);
+            }, (error) => {
+                if (!isMounted) return;
+                console.error("Error:", error);
+                setLoading(false);
+                if (error?.code === 'permission-denied') message.error(t('dashboard.messages.noPermission'));
+            }, constraints, pageSize, startAfterDoc, collectionName);
         });
 
         return () => {
+            isMounted = false; // Mark unmounted
             if (unsubscribe) unsubscribe();
         };
-    }, [user, activeTab, isDS, page, pageSize, executedSearchTerm]);
+        // Dependency Trick: When searching, changes to activeTab should NOT trigger re-fetch.
+        // We use a conditional dependency: if executedSearchTerm is set, we pass a static string instead of activeTab.
+    }, [user, executedSearchTerm ? (mode === 'idea' ? 'search_idea' : 'search_task') : activeTab, isDS, page, pageSize, executedSearchTerm, collectionName, mode, isAdmin]);
 
     const handlePageChange = (p: number, ps: number) => {
         setPage(p);
@@ -200,9 +280,9 @@ const Dashboard: React.FC = () => {
             // Find order to generate storage prefix for cleanup
             const order = orders.find(o => o.id === orderId);
 
-            const prefix = order ? (order.storagePath || generateStoragePath(order as any)) : undefined;
+            const prefix = order ? (order.storagePath || generateStoragePath(order as any, collectionName)) : undefined;
 
-            await deleteOrder(orderId, prefix);
+            await deleteOrder(orderId, prefix, collectionName);
             message.success(t('dashboard.messages.deleteSuccess'));
         } catch (error) {
             console.error("Delete Error:", error);
@@ -210,6 +290,38 @@ const Dashboard: React.FC = () => {
         }
     }, [orders, t, message]); // Added t dependency
 
+
+    const handleQuickApprove = React.useCallback(async (e: React.MouseEvent, order: Order) => {
+        e.stopPropagation();
+        try {
+            import('../services/firebase').then(async ({ updateOrder, addOrderLog }) => {
+                await updateOrder(order.id, {
+                    status: 'in_review',
+                    approvedByManager: true
+                }, true, order.collectionName);
+                await addOrderLog(order.id, {
+                    action: 'manager_approve',
+                    actorId: user?.uid || 'admin',
+                    actorName: user?.displayName || 'Manager',
+                    actorDisplayName: user?.displayName,
+                    actionType: 'manager_approve',
+                    actionLabel: 'Manager Approved',
+                    details: 'Manager Approved (Quick Action)'
+                }, order.collectionName);
+                message.success('Approved');
+            });
+        } catch (err) { message.error('Failed'); }
+    }, [user, message]);
+
+    const handleQuickReject = React.useCallback(async (e: React.MouseEvent, order: Order) => {
+        e.stopPropagation();
+        // For reject, maybe we need a reason? Quick Reject might need default reason or open modal.
+        // Prompt says "Thông báo confirm trước khi action".
+        // Let's just open the Reject Modal or Detail Modal?
+        // "Nút Approve / Reject". If Reject requires reason, maybe open RejectModal directly?
+        setSelectedOrder(order);
+        setIsRejectModalOpen(true);
+    }, []);
 
     // Memoize tab content to prevent re-render when switching tabs
     const tabContent = React.useMemo(() => {
@@ -224,7 +336,7 @@ const Dashboard: React.FC = () => {
                             key={order.id}
                             order={order}
                             isUrgent={order.isUrgent}
-                            isCS={isCS}
+                            isCS={canCreate} // Pass Creator role validity for edit/delete actions
                             onOpenDetail={handleOpenDetail}
                             onDelete={handleDelete}
                         />
@@ -239,21 +351,25 @@ const Dashboard: React.FC = () => {
                         key={order.id}
                         order={order}
                         isUrgent={order.isUrgent}
-                        isCS={isCS}
-                        isDS={isDS || (user?.role === 'ADMIN' && order.designerId === user?.uid)}
+                        isCS={canCreate}
+                        isDS={(isDS || user?.role === 'ADMIN') && order.designerId === user?.uid} // Only show DS actions (Give Back) if I AM the assigned designer
+                        isAdmin={isAdmin}
                         onOpenDetail={handleOpenDetail}
                         onOpenGiveBack={handleOpenGiveBack}
                         onDelete={handleDelete}
+                        onQuickApprove={handleQuickApprove}
+                        onQuickReject={handleQuickReject}
                     />
                 ))}
             </div>
         );
-    }, [loading, filteredOrders, viewMode, t, isCS, isDS, user, handleOpenDetail, handleOpenGiveBack, handleDelete]);
+    }, [loading, filteredOrders, viewMode, t, isCS, isDS, user, isAdmin, handleOpenDetail, handleOpenGiveBack, handleDelete, handleQuickApprove, handleQuickReject]);
 
 
     const tabItems = [
         { key: 'new', label: t('dashboard.tabs.new'), children: null },
         { key: 'doing', label: t('dashboard.tabs.doing'), children: null },
+        ...(isAdmin ? [{ key: 'check', label: 'Check', children: null }] : []), // Conditional Check Tab
         { key: 'in_review', label: t('dashboard.tabs.in_review'), children: null },
         { key: 'need_fix', label: t('dashboard.tabs.need_fix'), children: null },
         { key: 'done', label: t('dashboard.tabs.done'), children: null },
@@ -272,23 +388,30 @@ const Dashboard: React.FC = () => {
     // Let's use `items` with empty children and render content below.
 
     return (
-        <Layout style={{ minHeight: '100vh', background: '#E6F7FF' }}>
+        <Layout style={{ minHeight: '100vh', background: accentColor }}>
             <AppHeader
-                onNewTask={isCS ? () => setIsNewTaskModalOpen(true) : undefined}
+                onNewTask={canCreate ? () => setIsNewTaskModalOpen(true) : undefined}
             />
             <Content style={{ padding: 18 }}>
                 <div style={{ background: '#fff', borderRadius: 12, minHeight: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'column' }}>
                     <div style={{ height: '80px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 24px' }}>
                         <Tabs
                             activeKey={activeTab}
-                            onChange={(key) => navigate('/' + key)}
+                            onChange={(key) => navigate(`/board/${mode === 'idea' ? 'idea' : 'fulfill'}/${key}`)}
                             items={tabItems}
                             tabBarStyle={{ margin: 0, border: 'none' }}
                             style={{ flex: 1 }}
                             tabBarExtraContent={
                                 <SearchInput
                                     value={searchText}
-                                    onChange={setSearchText}
+                                    onChange={(val) => {
+                                        setSearchText(val);
+                                        // Auto-clear logic
+                                        if (!val) {
+                                            setExecutedSearchTerm('');
+                                            setPage(1);
+                                        }
+                                    }}
                                     onSearch={(val) => {
                                         setExecutedSearchTerm(val);
                                         setPage(1);
@@ -338,15 +461,23 @@ const Dashboard: React.FC = () => {
                 </div>
             </Content>
 
-            <NewTaskModal open={isNewTaskModalOpen} onCancel={() => setIsNewTaskModalOpen(false)} onSuccess={() => setIsNewTaskModalOpen(false)} />
-            {selectedOrder && (
-                <>
-                    <TaskDetailModal order={selectedOrder} open={isDetailModalOpen} onCancel={() => { setIsDetailModalOpen(false); setSelectedOrder(null); }} onUpdate={() => { }} />
-                    <RejectModal order={selectedOrder} open={isRejectModalOpen} onCancel={() => { setIsRejectModalOpen(false); setSelectedOrder(null); }} onSuccess={() => { }} />
-                    <GiveBackModal order={selectedOrder} open={isGiveBackModalOpen} onCancel={() => { setIsGiveBackModalOpen(false); setSelectedOrder(null); }} onSuccess={() => { }} />
-                </>
-            )}
-        </Layout>
+            <NewTaskModal
+                open={isNewTaskModalOpen}
+                onCancel={() => setIsNewTaskModalOpen(false)}
+                onSuccess={() => setIsNewTaskModalOpen(false)}
+                collectionName={collectionName}
+                mode={mode}
+            />
+            {
+                selectedOrder && (
+                    <>
+                        <TaskDetailModal order={selectedOrder} open={isDetailModalOpen} onCancel={() => { setIsDetailModalOpen(false); setSelectedOrder(null); }} onUpdate={() => { }} />
+                        <RejectModal order={selectedOrder} open={isRejectModalOpen} onCancel={() => { setIsRejectModalOpen(false); setSelectedOrder(null); }} onSuccess={() => { }} />
+                        <GiveBackModal order={selectedOrder} open={isGiveBackModalOpen} onCancel={() => { setIsGiveBackModalOpen(false); setSelectedOrder(null); }} onSuccess={() => { }} />
+                    </>
+                )
+            }
+        </Layout >
     );
 };
 

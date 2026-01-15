@@ -20,9 +20,13 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
     const { t } = useLanguage();
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-    const isCS = user?.role === 'CS' || user?.role === 'ADMIN';
-    const isAdmin = user?.role === 'ADMIN';
+    const role = user?.role || '';
+    const canAccessFulfill = ['ADMIN', 'CS', 'DS'].includes(role);
+    const canAccessIdea = ['ADMIN', 'DS', 'IDEA'].includes(role);
+
+    const isAdmin = role === 'ADMIN';
     const isAdminPage = location.pathname.includes('/admin');
+    const isIdeaBoard = location.pathname.includes('/board/idea');
 
     const userMenuItems: any[] = [
         {
@@ -81,16 +85,35 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
                     height: 80,
                 }}
             >
-                {/* Left Side: Logo + Search */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 0 }}>
-                    <div style={{ marginRight: 8 }}>
-                        <LanguageSwitcher />
-                    </div>
+                {/* Left Side: Logo + Switcher */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <LanguageSwitcher />
+
+                    {!isAdminPage && (canAccessFulfill || canAccessIdea) && (
+                        <div className="header-toggle-container">
+                            {canAccessFulfill && (
+                                <div
+                                    onClick={() => navigate('/board/fulfill')}
+                                    className={`header-toggle-item ${!isIdeaBoard ? 'active fulfill' : ''}`}
+                                >
+                                    <HomeOutlined /> Fulfill
+                                </div>
+                            )}
+                            {canAccessIdea && (
+                                <div
+                                    onClick={() => navigate('/board/idea')}
+                                    className={`header-toggle-item ${isIdeaBoard ? 'active idea' : ''}`}
+                                >
+                                    <SafetyCertificateOutlined /> Idea
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Right Side: Action Buttons + User Menu */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
-                    {isCS && onNewTask && (
+                    {onNewTask && (
                         <Button
                             type="primary"
                             icon={<PlusOutlined />}
@@ -110,7 +133,10 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
                             <div style={{ lineHeight: 'normal', textAlign: 'right' }}>
                                 <div style={{ fontWeight: 600 }}>{user?.displayName}</div>
                                 <div style={{ fontSize: 10, color: '#8c8c8c' }}>
-                                    {user?.role === 'CS' ? t('header.role.cs') : user?.role === 'DS' ? t('header.role.ds') : t('header.role.admin')}
+                                    {user?.role === 'CS' ? t('header.role.cs') :
+                                        user?.role === 'DS' ? t('header.role.ds') :
+                                            user?.role === 'IDEA' ? 'Idea' :
+                                                t('header.role.admin')}
                                 </div>
                             </div>
                             <Avatar

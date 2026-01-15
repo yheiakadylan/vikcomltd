@@ -95,7 +95,7 @@ const Admin: React.FC = () => {
             dataIndex: 'role',
             key: 'role',
             render: (role: string) => {
-                let color = role === 'ADMIN' ? 'red' : role === 'CS' ? 'blue' : 'green';
+                let color = role === 'ADMIN' ? 'red' : role === 'CS' ? 'blue' : role === 'IDEA' ? 'purple' : 'green';
                 return <Tag color={color}>{role}</Tag>;
             }
         },
@@ -182,6 +182,7 @@ const Admin: React.FC = () => {
                         <Select>
                             <Select.Option value="CS">CS (Customer Service)</Select.Option>
                             <Select.Option value="DS">DS (Designer)</Select.Option>
+                            <Select.Option value="IDEA">Idea</Select.Option>
                             <Select.Option value="ADMIN">Admin</Select.Option>
                         </Select>
                     </Form.Item>

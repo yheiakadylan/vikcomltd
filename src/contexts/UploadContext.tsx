@@ -9,7 +9,7 @@ import { translations } from '../utils/translations';
 
 interface UploadContextType {
     queue: UploadItem[];
-    enqueue: (files: File[], orderId: string, itemType: 'customerFiles' | 'designFiles' | 'mockupUrl', basePath: string, readableId?: string) => void;
+    enqueue: (files: File[], orderId: string, itemType: 'customerFiles' | 'designFiles' | 'mockupUrl', basePath: string, readableId?: string, collectionName?: string) => void;
     retry: (id: string) => void;
     cancel: (id: string) => void;
     clearCompleted: () => void;
@@ -27,22 +27,21 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const completionActionsRef = useRef<Map<string, 'auto_submit' | 'notify_creation'>>(new Map());
 
     // Enqueue new files
-    const enqueue = useCallback((files: File[], orderId: string, targetField: 'customerFiles' | 'designFiles' | 'mockupUrl', basePath: string, readableId?: string) => {
+    const enqueue = useCallback((files: File[], orderId: string, targetField: 'customerFiles' | 'designFiles' | 'mockupUrl', basePath: string, readableId?: string, collectionName: string = 'tasks') => {
         const newItems: UploadItem[] = files.map(file => ({
             id: Math.random().toString(36).substr(2, 9),
             file,
             status: 'pending',
             progress: 0,
             orderId,
-            readableId, // Assign readableId
+            readableId,
             targetField,
-            storagePath: `${basePath}/${file.name}`
+            storagePath: `${basePath}/${file.name}`,
+            collectionName: collectionName // Store collection name
         }));
 
         setQueue(prev => [...prev, ...newItems]);
 
-        // If we are adding files to an order that was already notified as done, 
-        // we should remove it from the notified set so it can trigger again.
         if (notifiedOrdersRef.current.has(orderId)) {
             notifiedOrdersRef.current.delete(orderId);
         }
@@ -60,8 +59,6 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Check for Order Completion
     useEffect(() => {
-        // ... (Completion logic remains the same)
-        // Group by OrderId
         const orders = Array.from(new Set(queue.map(i => i.orderId)));
 
         orders.forEach(oid => {
@@ -71,13 +68,16 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const allSuccess = items.every(i => i.status === 'success');
             const hasPending = items.some(i => i.status === 'pending' || i.status === 'uploading' || i.status === 'retrying');
 
+            // Assume same collection for all items in an order (safe assumption)
+            const collectionName = items[0]?.collectionName || 'tasks';
+
             if (allSuccess && !hasPending) {
                 const action = completionActionsRef.current.get(oid);
-                const readableId = items[0]?.readableId || oid; // Fallback to oid if readableId not available
+                const readableId = items[0]?.readableId || oid;
 
                 if (action === 'auto_submit') {
                     // Perform Auto Submit
-                    updateOrder(oid, { status: 'in_review', updatedAt: new Date() })
+                    updateOrder(oid, { status: 'in_review', updatedAt: new Date() }, false, collectionName)
                         .then(() => {
                             notification.success({
                                 title: `${translations[language].notifications.uploadSuccess.message}${readableId}`,
@@ -85,7 +85,7 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                 placement: 'bottomRight',
                                 duration: 5
                             });
-                            completionActionsRef.current.delete(oid); // remove from auto submit
+                            completionActionsRef.current.delete(oid);
                         })
                         .catch(err => {
                             console.error("Auto Submit Failed", err);
@@ -95,7 +95,7 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                 duration: 5
                             });
                         });
-                    return; // Skip standard notification
+                    return;
                 } else if (action === 'notify_creation') {
                     notification.success({
                         title: `${translations[language].notifications.createTaskSuccess.message}${readableId}`,
@@ -108,7 +108,6 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
 
                 if (!notifiedOrdersRef.current.has(oid)) {
-                    // Standard Notification (No Action Button)
                     notification.success({
                         title: `${translations[language].notifications.uploadComplete.message}${readableId}`,
                         description: translations[language].notifications.uploadComplete.description,
@@ -121,7 +120,6 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
             } else {
                 if (notifiedOrdersRef.current.has(oid)) {
-                    // If it was notified but now has pending items (e.g. user added more files), reset flag
                     notifiedOrdersRef.current.delete(oid);
                 }
             }
@@ -131,39 +129,34 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const processNext = useCallback(async () => {
         if (processingRef.current) return;
 
-        // Find next pending item
         const nextItem = queue.find(item => item.status === 'pending' || item.status === 'retrying');
         if (!nextItem) return;
 
         processingRef.current = true;
-        const { id, file, storagePath, orderId, targetField } = nextItem;
+        const { id, file, storagePath, orderId, targetField, collectionName = 'tasks' } = nextItem;
 
         updateItemStatus(id, 'uploading', 10);
 
         try {
-            // 1. Upload to Firebase Storage (Hot Storage)
-            // Use storagePath directly (remove leading slash if present for consistency)
             const finalPath = storagePath ? (storagePath.startsWith('/') ? storagePath.substring(1) : storagePath) : `uploads/${orderId}/${file.name}`;
-
             const firebaseUrl = await uploadFileToStorage(file, finalPath);
             updateItemStatus(id, 'uploading', 90);
 
-            // 2. Update Firestore with firebaseUrl
             const attachment = {
                 name: file.name,
-                link: firebaseUrl, // Direct access
+                link: firebaseUrl,
                 type: file.type,
             };
 
             const updateData: any = {};
-            // Save firebaseUrl for immediate display
             if (targetField === 'mockupUrl') {
                 updateData[targetField] = firebaseUrl;
             } else {
                 updateData[targetField] = arrayUnion(attachment);
             }
 
-            await updateOrder(orderId, updateData);
+            // PASS COLLECTION NAME HERE
+            await updateOrder(orderId, updateData, false, collectionName);
 
             updateItemStatus(id, 'success', 100, undefined, firebaseUrl);
         } catch (error: any) {

@@ -66,7 +66,7 @@ export const saveSystemSettings = async (settings: any) => {
 
 
 
-export const deleteOrder = async (orderId: string, storagePrefix?: string) => {
+export const deleteOrder = async (orderId: string, storagePrefix?: string, collectionName: string = 'tasks') => {
     // 1. Clean up Storage files (hot storage only)
     // We call the server API to ensure it handles the prefixes correctly using server credentials or logic
     // But since we are client-side, we can just call the endpoint.
@@ -81,7 +81,7 @@ export const deleteOrder = async (orderId: string, storagePrefix?: string) => {
     }
 
     // 2. Delete Logs Subcollection (Firestore does not auto-delete subcollections)
-    const logsRef = collection(db, 'tasks', orderId, 'logs');
+    const logsRef = collection(db, collectionName, orderId, 'logs');
     const logsSnapshot = await getDocs(logsRef);
 
     // Check if there are logs to delete
@@ -94,7 +94,7 @@ export const deleteOrder = async (orderId: string, storagePrefix?: string) => {
     }
 
     // 3. Delete Firestore Document
-    const orderRef = doc(db, 'tasks', orderId);
+    const orderRef = doc(db, collectionName, orderId);
     await deleteDoc(orderRef);
 };
 
@@ -105,12 +105,20 @@ export const getUsers = async (): Promise<User[]> => {
 };
 
 export const createUserProfile = async (user: User) => {
+    console.log("Creating User Profile:", user);
+    console.log("Current Auth User:", auth.currentUser?.uid, auth.currentUser?.email);
     if (!user.uid) throw new Error("User UID required");
-    await setDoc(doc(db, 'users', user.uid), user);
+    try {
+        await setDoc(doc(db, 'users', user.uid), user);
+        console.log("Create Profile Success");
+    } catch (e) {
+        console.error("Create Profile Failed:", e);
+        throw e;
+    }
 };
 
-export const getOrdersCount = async (constraints: any[] = []): Promise<number> => {
-    const coll = collection(db, 'tasks');
+export const getOrdersCount = async (constraints: any[] = [], collectionName: string = 'tasks'): Promise<number> => {
+    const coll = collection(db, collectionName);
     const q = query(coll, ...constraints);
     const snapshot = await getCountFromServer(q);
     return snapshot.data().count;
@@ -121,7 +129,8 @@ export const subscribeToOrders = (
     onError?: (error: any) => void,
     constraints: any[] = [],
     limitVal: number = 25,
-    startAfterDoc: QueryDocumentSnapshot | null = null
+    startAfterDoc: QueryDocumentSnapshot | null = null,
+    collectionName: string = 'tasks'
 ) => {
     // Construct Query constraints
     const computedConstraints = [
@@ -137,14 +146,15 @@ export const subscribeToOrders = (
     computedConstraints.push(limit(limitVal));
 
     const q = query(
-        collection(db, 'tasks'),
+        collection(db, collectionName),
         ...computedConstraints
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const orders = snapshot.docs.map(doc => ({
             id: doc.id,
-            ...doc.data()
+            ...doc.data(),
+            collectionName
         })) as Order[];
 
         // Return the last document for pagination cursor
@@ -182,11 +192,34 @@ export default app;
 /**
  * Activity Logs
  */
-export const addOrderLog = async (taskId: string, logData: any) => {
+export const addOrderLog = async (taskId: string, logData: any, collectionName: string = 'tasks') => {
     try {
-        const logsRef = collection(db, 'tasks', taskId, 'logs');
+        let finalDisplayName = logData.actorDisplayName || logData.actorName;
+
+        // Lookup real display name if actorId is provided and we want to ensure accuracy
+        if (logData.actorId && !logData.actorDisplayName) {
+            try {
+                // Try to get from Auth first if it matches current user (fastest)
+                if (auth.currentUser && auth.currentUser.uid === logData.actorId && auth.currentUser.displayName) {
+                    finalDisplayName = auth.currentUser.displayName;
+                } else {
+                    // Fetch from Firestore Users collection
+                    const userDoc = await getDoc(doc(db, 'users', logData.actorId));
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        finalDisplayName = userData.displayName || userData.email || finalDisplayName;
+                    }
+                }
+            } catch (err) {
+                console.warn("Failed to lookup actor display name:", err);
+            }
+        }
+
+        const logsRef = collection(db, collectionName, taskId, 'logs');
         await addDoc(logsRef, {
             ...logData,
+            actorDisplayName: finalDisplayName,
+            conversationId: logData.conversationId || null, // Optional for grouping if needed later
             createdAt: new Date()
         });
     } catch (e) {
@@ -194,15 +227,15 @@ export const addOrderLog = async (taskId: string, logData: any) => {
     }
 };
 
-export const getOrderLogs = async (taskId: string) => {
-    const logsRef = collection(db, 'tasks', taskId, 'logs');
+export const getOrderLogs = async (taskId: string, collectionName: string = 'tasks') => {
+    const logsRef = collection(db, collectionName, taskId, 'logs');
     const q = query(logsRef, orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
 };
 
-export const updateOrder = async (orderId: string, data: any, skipAutoLog: boolean = false) => {
-    const orderRef = doc(db, 'tasks', orderId);
+export const updateOrder = async (orderId: string, data: any, skipAutoLog: boolean = false, collectionName: string = 'tasks') => {
+    const orderRef = doc(db, collectionName, orderId);
     await updateDoc(orderRef, data);
 
     // Automatic Logging
@@ -210,15 +243,18 @@ export const updateOrder = async (orderId: string, data: any, skipAutoLog: boole
     if (!skipAutoLog && currentUser && data.status) {
         await addOrderLog(orderId, {
             actorId: currentUser.uid,
-            actorName: currentUser.displayName || 'System',
+            actorName: currentUser.displayName || 'System', // Fallback
+            actorDisplayName: currentUser.displayName, // Explicitly pass if available
             action: 'status_change',
+            actionType: 'status_change',
+            actionLabel: `Changed status to ${data.status.toUpperCase()}`,
             content: `Changed status to "${data.status}"`
-        });
+        }, collectionName);
     }
 };
 
-export const claimOrder = async (orderId: string, userId: string) => {
-    const orderRef = doc(db, 'tasks', orderId);
+export const claimOrder = async (orderId: string, userId: string, collectionName: string = 'tasks') => {
+    const orderRef = doc(db, collectionName, orderId);
 
     try {
         await runTransaction(db, async (transaction) => {
@@ -241,11 +277,13 @@ export const claimOrder = async (orderId: string, userId: string) => {
 
         // Log outside transaction (less critical)
         await addOrderLog(orderId, {
-            actorId: userId, // The claimer
-            actorName: 'Designer', // Simplified or fetch name if needed, but userId is stored
+            actorId: userId,
+            actorName: 'Designer',
             action: 'claim',
+            actionType: 'claim',
+            actionLabel: 'Claimed Task',
             content: 'Claimed this task'
-        });
+        }, collectionName);
 
     } catch (e) {
         console.error("Transaction failed: ", e);
@@ -260,8 +298,19 @@ export const uploadFileToStorage = async (file: File, path: string) => {
 };
 // ...
 
-export const checkOrderExists = async (readableId: string): Promise<boolean> => {
-    const q = query(collection(db, 'tasks'), where('readableId', '==', readableId));
-    const snapshot = await getCountFromServer(q);
-    return snapshot.data().count > 0;
+export const checkOrderExists = async (readableId: string, collectionName: string = 'tasks'): Promise<boolean> => {
+    try {
+        const q = query(collection(db, collectionName), where('readableId', '==', readableId));
+        const snapshot = await getCountFromServer(q);
+        return snapshot.data().count > 0;
+    } catch (error: any) {
+        // If permission denied (e.g. checking against hidden 'check' status tasks), 
+        // we assume it doesn't exist in our visible scope.
+        if (error.code === 'permission-denied' || error.message?.includes('permission-denied')) {
+            console.warn("Permission denied checking order existence (likely hidden status). Assuming unique.");
+            return false;
+        }
+        console.error("Error checking order existence:", error);
+        throw error;
+    }
 };

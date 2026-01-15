@@ -18,6 +18,8 @@ interface NewTaskModalProps {
     open: boolean;
     onCancel: () => void;
     onSuccess: () => void;
+    collectionName?: string;
+    mode?: 'fulfill' | 'idea';
 }
 
 interface CustomFile {
@@ -43,7 +45,7 @@ interface LarkOrder {
     items: LarkItem[];
 }
 
-const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }) => {
+const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, collectionName = 'tasks', mode = 'fulfill' }) => {
     const [form] = Form.useForm();
     const { appUser: user } = useAuth();
     const { t } = useLanguage();
@@ -83,6 +85,9 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
     // Fetch Order Data Effect
     useEffect(() => {
         // Sanitize check: Ensure numeric/clean ID and sufficient length
+        // SKIP IF IDEA MODE
+        if (mode === 'idea') return;
+
         const cleanId = debouncedOrderId.trim();
         if (!cleanId || cleanId.length < 5) return;
 
@@ -244,9 +249,9 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                 title: values.title || '',
                 sku: values.sku,
                 created_at: new Date()
-            });
+            }, collectionName);
 
-            const newOrderRef = doc(collection(db, "tasks"));
+            const newOrderRef = doc(collection(db, collectionName));
             const orderId = newOrderRef.id;
 
             // 1. Create Order FIRST
@@ -260,6 +265,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                 isUrgent: isUrgent,
                 createdBy: user.uid || '',
                 storagePath: storagePath,
+                collectionName: collectionName, // Save source collection
                 mockupUrl: '',
                 customerFiles: [],
                 sampleFiles: [],
@@ -279,7 +285,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
             const finalMockupName = `mockup${ext}`;
             const renamedMockupFile = new File([mockupFile.file], finalMockupName, { type: mockupFile.file.type });
 
-            enqueue([renamedMockupFile], orderId, 'mockupUrl', `${storagePath}/Mockup`, readableId);
+            enqueue([renamedMockupFile], orderId, 'mockupUrl', `${storagePath}/Mockup`, readableId, collectionName);
 
             // 3. Enqueue Customer Files
             if (customerFiles.length > 0) {
@@ -292,7 +298,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                     return new File([cFile.file], finalName, { type: cFile.file.type });
                 });
 
-                enqueue(filesToUpload, orderId, 'customerFiles', `${storagePath}/Customer`, readableId);
+                enqueue(filesToUpload, orderId, 'customerFiles', `${storagePath}/Customer`, readableId, collectionName);
             }
 
             message.success('Đã tạo task! File đang được upload nền...');
@@ -428,15 +434,15 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                     <Col span={14}>
                         <Form.Item
                             name="readableId"
-                            label={t('newTask.form.orderId')}
+                            label={mode === 'idea' ? t('newTask.form.ideaTeam') : t('newTask.form.orderId')}
                             rules={[
-                                { required: true, message: 'Vui lòng nhập Order ID' },
+                                { required: true, message: mode === 'idea' ? t('newTask.form.enterIdeaTeam') : 'Vui lòng nhập Order ID' },
                                 {
                                     validator: async (_, value) => {
                                         if (!value) return Promise.resolve();
-                                        const exists = await checkOrderExists(value);
+                                        const exists = await checkOrderExists(value, collectionName);
                                         if (exists) {
-                                            return Promise.reject(new Error('Order ID này đã tồn tại!'));
+                                            return Promise.reject(new Error((mode === 'idea' ? 'Team' : 'Order ID') + ' này đã tồn tại!'));
                                         }
                                         return Promise.resolve();
                                     }
@@ -446,7 +452,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess }
                         >
                             <div style={{ position: 'relative' }}>
                                 <Input
-                                    placeholder={t('newTask.form.orderId')}
+                                    placeholder={mode === 'idea' ? t('newTask.form.enterIdeaTeam') : t('newTask.form.orderId')}
                                     size="large"
                                     style={{ borderRadius: 8 }}
                                     value={orderIdInput}

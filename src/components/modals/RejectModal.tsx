@@ -29,7 +29,7 @@ const RejectModal: React.FC<RejectModalProps> = ({ order, open, onCancel, onSucc
                 isUrgent: isUrgent, // Update Urgent flag
                 // Potentially append reason to logs or description
                 description: order.description + `\n\n[REJECTED]: ${reason}`
-            });
+            }, false, order.collectionName);
             message.success('Đã trả đơn về Need Fix!');
             onSuccess();
             onCancel();

@@ -24,7 +24,7 @@ const GiveBackModal: React.FC<GiveBackModalProps> = ({ order, open, onCancel, on
                 status: 'new',
                 designerId: null,
                 updatedAt: new Date()
-            });
+            }, false, order.collectionName);
             message.success("Đã trả lại task!");
             onSuccess();
             onCancel();
