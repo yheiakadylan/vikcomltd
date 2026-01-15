@@ -3,8 +3,8 @@
 body {
   margin: 0;
   font-family: 'Be Vietnam Pro', sans-serif;
-  background-color: #FFF0F6;
-  /* Soft Pink Background */
+  background-color: #E6F7FF;
+  /* Soft Blue Background */
 }
 
 /* Custom Scrollbar */
@@ -18,12 +18,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #ffadd2;
+  background: #91D5FF;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #eb2f96;
+  background: #1677FF;
 }
 
 /* --- CINEMATIC CARDS --- */
@@ -36,7 +36,7 @@ body {
 
 .ant-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 12px 24px rgba(235, 47, 150, 0.15) !important;
+  box-shadow: 0 12px 24px rgba(22, 119, 255, 0.15) !important;
 }
 
 /* Image Zoom Effect */
@@ -56,7 +56,7 @@ body {
 /* --- BEAUTIFUL TABS (Simple & Pink) --- */
 /* Override Ant Design Tabs Ink Bar */
 .ant-tabs-ink-bar {
-  background: #eb2f96 !important;
+  background: #1677FF !important;
   height: 3px !important;
   border-radius: 3px;
   bottom: 2px !important;
@@ -76,12 +76,12 @@ body {
 }
 
 .ant-tabs-tab:hover {
-  color: #eb2f96 !important;
-  background: rgba(235, 47, 150, 0.05);
+  color: #1677FF !important;
+  background: rgba(22, 119, 255, 0.05);
 }
 
 .ant-tabs-tab.ant-tabs-tab-active {
-  background: rgba(235, 47, 150, 0.08);
+  background: rgba(22, 119, 255, 0.08);
   /* Light Pink Background for Active */
 }
 
@@ -93,7 +93,7 @@ body {
 }
 
 .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: #eb2f96 !important;
+  color: #1677FF !important;
   /* Active Pink */
   font-weight: 700;
 }
@@ -122,18 +122,18 @@ body {
 
 .cinematic-search .ant-input-affix-wrapper {
   border-radius: 20px !important;
-  border-color: #ffadd2 !important;
+  border-color: #91D5FF !important;
   padding-left: 20px !important;
   /* Fix text cutoff */
   padding-right: 8px !important;
-  box-shadow: 0 4px 12px rgba(235, 47, 150, 0.1);
+  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.1);
   transition: all 0.3s ease;
 }
 
 .cinematic-search .ant-input-affix-wrapper:hover,
 .cinematic-search .ant-input-affix-wrapper:focus-within {
-  border-color: #eb2f96 !important;
-  box-shadow: 0 4px 15px rgba(235, 47, 150, 0.25) !important;
+  border-color: #1677FF !important;
+  box-shadow: 0 4px 15px rgba(22, 119, 255, 0.25) !important;
 }
 
 .cinematic-search .ant-input {
@@ -142,7 +142,7 @@ body {
 }
 
 .cinematic-search .ant-input-suffix {
-  color: #eb2f96;
+  color: #1677FF;
   margin-left: 8px;
   /* Space from text */
   font-size: 18px;
@@ -163,8 +163,8 @@ body {
 }
 
 .cinematic-pagination .ant-pagination-item-active {
-  background: #eb2f96;
-  border-color: #eb2f96;
+  background: #1677FF;
+  border-color: #1677FF;
 }
 
 .cinematic-pagination .ant-pagination-item-active a {
@@ -172,7 +172,7 @@ body {
 }
 
 .cinematic-pagination .ant-pagination-item:hover:not(.ant-pagination-item-active) {
-  background: rgba(235, 47, 150, 0.1);
+  background: rgba(22, 119, 255, 0.1);
   border-color: transparent;
 }
 
@@ -195,12 +195,12 @@ body {
 
 .view-switcher-icon:hover {
   background: rgba(0, 0, 0, 0.05);
-  color: #eb2f96;
+  color: #1677FF;
 }
 
 .view-switcher-icon.active {
-  background: #fff0f6;
-  color: #eb2f96;
+  background: #E6F7FF;
+  color: #1677FF;
 }
 
 /* --- CINEMATIC LIST ROW --- */
@@ -228,6 +228,7 @@ body {
   margin-right: 16px !important;
   font-weight: 500;
 }
-.ant-tabs-nav-operations{
+
+.ant-tabs-nav-operations {
   display: none !important;
 }

@@ -44,7 +44,7 @@ const UploadWidget: React.FC = () => {
                         size="large"
                         icon={pendingCount > 0 ? <LoadingOutlined /> : <CheckCircleOutlined />}
                         style={{
-                            background: pendingCount > 0 ? colors.primaryPink : '#52c41a',
+                            background: pendingCount > 0 ? colors.primary : '#52c41a',
                             borderColor: 'transparent',
                             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                             display: 'flex',
@@ -69,8 +69,8 @@ const UploadWidget: React.FC = () => {
             title={
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 16, fontWeight: 600 }}>
                     {pendingCount > 0 ?
-                        <div style={{ background: '#fff0f6', padding: 8, borderRadius: '50%', display: 'flex' }}>
-                            <LoadingOutlined spin style={{ color: colors.primaryPink }} />
+                        <div style={{ background: '#E6F7FF', padding: 8, borderRadius: '50%', display: 'flex' }}>
+                            <LoadingOutlined spin style={{ color: colors.primary }} />
                         </div> :
                         <div style={{ background: '#f6ffed', padding: 8, borderRadius: '50%', display: 'flex' }}>
                             <CheckCircleOutlined style={{ color: '#52c41a' }} />
@@ -108,7 +108,7 @@ const UploadWidget: React.FC = () => {
                                     <div style={{ marginTop: 4 }}>
                                         {item.status === 'success' ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 24 }} /> :
                                             item.status === 'error' ? <CloseOutlined style={{ color: '#ff4d4f', fontSize: 24 }} /> :
-                                                <CloudUploadOutlined style={{ color: colors.primaryPink, fontSize: 24 }} />
+                                                <CloudUploadOutlined style={{ color: colors.primary, fontSize: 24 }} />
                                         }
                                     </div>
                                 }
@@ -130,7 +130,7 @@ const UploadWidget: React.FC = () => {
                                             size="small"
                                             status={item.status === 'success' ? 'success' : 'active'}
                                             showInfo={false}
-                                            strokeColor={colors.primaryPink}
+                                            strokeColor={colors.primary}
                                             trailColor="#f5f5f5"
                                         />
                                 }

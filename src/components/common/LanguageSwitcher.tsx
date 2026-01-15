@@ -39,13 +39,13 @@ const LanguageSwitcher: React.FC = () => {
         opacity: isActive ? 1 : 0.4,
         transform: isActive ? 'scale(1.1)' : 'scale(1)',
         transition: 'all 0.2s ease',
-        border: isActive ? '2px solid #eb2f96' : '1px solid #d9d9d9',
+        border: isActive ? '2px solid #1677FF' : '1px solid #d9d9d9',
         borderRadius: 4,
         padding: 2,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        boxShadow: isActive ? '0 2px 4px rgba(235, 47, 150, 0.2)' : 'none'
+        boxShadow: isActive ? '0 2px 4px rgba(22, 119, 255, 0.2)' : 'none'
     });
 
     return (

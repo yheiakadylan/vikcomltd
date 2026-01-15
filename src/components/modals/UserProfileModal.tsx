@@ -101,7 +101,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onCancel }) =
                 {/* Left Sidebar / Header for Mobile */}
                 <div style={{
                     width: 250,
-                    background: 'linear-gradient(135deg, #fff0f6 0%, #ffd6e7 100%)',
+                    background: 'linear-gradient(135deg, #E6F7FF 0%, #BAE7FF 100%)',
                     padding: '40px 20px',
                     display: 'flex',
                     flexDirection: 'column',
@@ -115,7 +115,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onCancel }) =
                             icon={<UserOutlined />}
                             style={{
                                 border: '4px solid #fff',
-                                boxShadow: '0 4px 12px rgba(235, 47, 150, 0.2)',
+                                boxShadow: '0 4px 12px rgba(22, 119, 255, 0.2)',
                                 background: '#fff'
                             }}
                         />
@@ -123,7 +123,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onCancel }) =
                             position: 'absolute',
                             bottom: 0,
                             right: 0,
-                            background: '#eb2f96',
+                            background: '#1677FF',
                             width: 32,
                             height: 32,
                             borderRadius: '50%',
@@ -158,12 +158,12 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onCancel }) =
 
                     <span style={{
                         background: '#fff',
-                        color: '#eb2f96',
+                        color: '#1677FF',
                         padding: '4px 12px',
                         borderRadius: 20,
                         fontSize: 12,
                         fontWeight: 600,
-                        border: '1px solid #ffadd2'
+                        border: '1px solid #91D5FF'
                     }}>
                         {user?.role === 'CS' ? 'Customer Service' : user?.role === 'DS' ? 'Designer' : 'Administrator'}
                     </span>
@@ -195,7 +195,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onCancel }) =
                                             >
                                                 <Input
                                                     size="large"
-                                                    prefix={<UserOutlined style={{ color: '#eb2f96' }} />}
+                                                    prefix={<UserOutlined style={{ color: '#1677FF' }} />}
                                                     style={{ borderRadius: 8 }}
                                                 />
                                             </Form.Item>
@@ -210,11 +210,11 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onCancel }) =
                                                     loading={loading}
                                                     size="large"
                                                     style={{
-                                                        background: '#eb2f96',
-                                                        borderColor: '#eb2f96',
+                                                        background: '#1677FF',
+                                                        borderColor: '#1677FF',
                                                         borderRadius: 8,
                                                         fontWeight: 500,
-                                                        boxShadow: '0 4px 14px rgba(235, 47, 150, 0.3)'
+                                                        boxShadow: '0 4px 14px rgba(22, 119, 255, 0.3)'
                                                     }}
                                                 >
                                                     Lưu thay đổi
@@ -285,8 +285,8 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ open, onCancel }) =
                                                     loading={loading}
                                                     size="large"
                                                     style={{
-                                                        background: '#eb2f96',
-                                                        borderColor: '#eb2f96',
+                                                        background: '#1677FF',
+                                                        borderColor: '#1677FF',
                                                         borderRadius: 8,
                                                         fontWeight: 500
                                                     }}

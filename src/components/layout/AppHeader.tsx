@@ -70,7 +70,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
             <Header
                 style={{
                     background: '#fff',
-                    borderBottom: '1px solid #ffadd2',
+                    borderBottom: '1px solid #91D5FF',
                     padding: '0 24px',
                     display: 'flex',
                     alignItems: 'center',
@@ -95,7 +95,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
                             type="primary"
                             icon={<PlusOutlined />}
                             onClick={onNewTask}
-                            style={{ background: '#eb2f96', borderColor: '#eb2f96' }}
+                            style={{ background: '#1677FF', borderColor: '#1677FF' }}
                         >
                             {t('header.newTask')}
                         </Button>

@@ -272,7 +272,7 @@ const Dashboard: React.FC = () => {
     // Let's use `items` with empty children and render content below.
 
     return (
-        <Layout style={{ minHeight: '100vh', background: '#fff0f6' }}>
+        <Layout style={{ minHeight: '100vh', background: '#E6F7FF' }}>
             <AppHeader
                 onNewTask={isCS ? () => setIsNewTaskModalOpen(true) : undefined}
             />

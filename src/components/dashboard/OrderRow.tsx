@@ -57,7 +57,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontWeight: 800, fontSize: 18, color: isUrgent ? '#cf1322' : '#eb2f96', lineHeight: 1.2 }}>
+                        <span style={{ fontWeight: 800, fontSize: 18, color: isUrgent ? '#cf1322' : '#1677FF', lineHeight: 1.2 }}>
                             {isUrgent && <FireFilled style={{ marginRight: 4 }} />} #{order.readableId}
                         </span>
                         <span style={{ fontSize: 13, color: '#666', background: '#f5f5f5', padding: '2px 8px', borderRadius: 4, marginTop: 4, maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

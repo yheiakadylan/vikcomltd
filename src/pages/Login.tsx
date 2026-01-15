@@ -34,11 +34,11 @@ const Login: React.FC = () => {
     };
 
     return (
-        <Layout style={{ minHeight: '100vh', background: colors.softPink, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <Layout style={{ minHeight: '100vh', background: colors.bgLight, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <Content style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
                 <div style={{ marginBottom: 32, textAlign: 'center' }}>
                     {/* Logo Placeholder */}
-                    <Title level={2} style={{ color: colors.primaryPink, margin: 0 }}></Title>
+                    <Title level={2} style={{ color: colors.primary, margin: 0 }}></Title>
                 </div>
                 <Card style={{ width: 400, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                     <Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>Đăng nhập</Title>
@@ -61,7 +61,7 @@ const Login: React.FC = () => {
                             <Input.Password placeholder="Password" />
                         </Form.Item>
                         <Form.Item>
-                            <Button type="primary" htmlType="submit" block loading={loading} style={{ background: colors.primaryPink, borderColor: colors.primaryPink }}>
+                            <Button type="primary" htmlType="submit" block loading={loading} style={{ background: colors.primary, borderColor: colors.primary }}>
                                 Đăng nhập
                             </Button>
                         </Form.Item>

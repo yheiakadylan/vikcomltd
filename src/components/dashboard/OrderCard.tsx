@@ -85,7 +85,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {/* Header: ID + Date */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: 18, fontWeight: 800, color: isUrgent ? '#ff4d4f' : '#eb2f96', lineHeight: 1 }}>
+                            <span style={{ fontSize: 18, fontWeight: 800, color: isUrgent ? '#ff4d4f' : '#1677FF', lineHeight: 1 }}>
                                 {isUrgent && <FireFilled style={{ marginRight: 4 }} />} #{order.readableId}
                             </span>
                             {order.created_at && (
