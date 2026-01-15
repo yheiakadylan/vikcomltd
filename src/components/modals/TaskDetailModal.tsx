@@ -398,7 +398,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
             footer={null}
             title={
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <span style={{ fontWeight: 800, fontSize: 18, color: colors.primary }}>#{order?.readableId}</span>
+                    <span style={{ fontWeight: 800, fontSize: 18, color: 'var(--primary-color)' }}>#{order?.readableId}</span>
                     {(isCS || isAdmin) ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', marginRight: 32 }}>
                             <span style={{ fontSize: 14, color: isUrgent ? colors.urgentRed : '#bfbfbf', fontWeight: isUrgent ? 'bold' : 'normal' }}>
@@ -449,7 +449,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                     {/* Customer Files List */}
                     <div style={{ background: '#fafafa', padding: 16, borderRadius: 12 }}>
                         <div style={{ fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <CloudUploadOutlined style={{ color: colors.primary }} />
+                            <CloudUploadOutlined style={{ color: 'var(--primary-color)' }} />
                             {t('taskDetail.customerFiles.title')}({order?.customerFiles?.length || 0})
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto' }}>
@@ -546,8 +546,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                         onClick={handleUpdateInfo}
                                                         icon={<SaveOutlined />}
                                                         style={{
-                                                            background: colors.primary,
-                                                            borderColor: colors.primary,
+                                                            background: 'var(--primary-color)',
+                                                            borderColor: 'var(--primary-color)',
                                                             borderRadius: 20,
                                                             fontWeight: 600,
                                                             boxShadow: '0 2px 8px rgba(22, 119, 255, 0.3)'
@@ -595,7 +595,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                         <Button
                                                             type="primary"
                                                             onClick={handleClaim}
-                                                            style={{ background: colors.primary, borderColor: colors.primary, fontWeight: 600 }}
+                                                            style={{ background: 'var(--primary-color)', borderColor: 'var(--primary-color)', fontWeight: 600 }}
                                                             icon={<CloudUploadOutlined />}
                                                         >
                                                             {t('taskDetail.actions.claim')}
@@ -648,7 +648,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                             type="primary"
                                                             onClick={handleDSSubmit}
                                                             loading={dsUploading}
-                                                            style={{ background: colors.primary, borderColor: colors.primary, fontWeight: 600, boxShadow: '0 4px 14px rgba(22, 119, 255, 0.4)' }}
+                                                            style={{ background: 'var(--primary-color)', borderColor: 'var(--primary-color)', fontWeight: 600, boxShadow: '0 4px 14px rgba(22, 119, 255, 0.4)' }}
                                                             disabled={order?.status === 'need_fix' ? stagedFiles.length === 0 : (stagedFiles.length === 0 && designFiles.length === 0)}
                                                             icon={<SendOutlined />}
                                                         >
@@ -666,7 +666,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                     style={{ background: '#fff' }}
                                                 >
                                                     <p className="ant-upload-drag-icon">
-                                                        <CloudUploadOutlined style={{ color: colors.primary }} />
+                                                        <CloudUploadOutlined style={{ color: 'var(--primary-color)' }} />
                                                     </p>
                                                     <p className="ant-upload-text" style={{ fontSize: 13 }}>{t('taskDetail.designFiles.dragDrop')}</p>
                                                 </Dragger>

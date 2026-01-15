@@ -26,18 +26,29 @@ const { Content } = Layout;
 
 const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }) => {
     const collectionName = mode === 'idea' ? 'ideas' : 'tasks';
-    const accentColor = mode === 'idea' ? '#F9F0FF' : '#E6F7FF'; // Purple vs Blue
+    // Remove accentColor variable usage, rely on CSS variables
     const { message } = App.useApp();
     const { appUser: user } = useAuth();
     const { t } = useLanguage();
     const { status } = useParams<{ status: string }>();
     const navigate = useNavigate();
 
+    // Theme Effect
+    useEffect(() => {
+        if (mode === 'idea') {
+            document.body.classList.add('theme-idea');
+        } else {
+            document.body.classList.remove('theme-idea');
+        }
+        return () => {
+            document.body.classList.remove('theme-idea');
+        };
+    }, [mode]);
+
     // Validate status or default to 'new'
     const validStatuses: OrderStatus[] = ['new', 'doing', 'check', 'in_review', 'need_fix', 'done'];
     // const activeTab: OrderStatus = (status && validStatuses.includes(status as OrderStatus)) ? (status as OrderStatus) : 'new'; // Original line
     const [activeTab, setActiveTab] = usePersistedState<string>(`activeTab_${mode}`, 'new'); // Persisted per board
-
 
     // Sync URL status to activeTab
     useEffect(() => {
@@ -369,7 +380,7 @@ const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }
     const tabItems = [
         { key: 'new', label: t('dashboard.tabs.new'), children: null },
         { key: 'doing', label: t('dashboard.tabs.doing'), children: null },
-        ...(isAdmin ? [{ key: 'check', label: 'Check', children: null }] : []), // Conditional Check Tab
+        ...(isAdmin ? [{ key: 'check', label: t('dashboard.tabs.check'), children: null }] : []), // Conditional Check Tab
         { key: 'in_review', label: t('dashboard.tabs.in_review'), children: null },
         { key: 'need_fix', label: t('dashboard.tabs.need_fix'), children: null },
         { key: 'done', label: t('dashboard.tabs.done'), children: null },
@@ -388,7 +399,7 @@ const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }
     // Let's use `items` with empty children and render content below.
 
     return (
-        <Layout style={{ minHeight: '100vh', background: accentColor }}>
+        <Layout style={{ minHeight: '100vh', background: 'var(--primary-bg)' }}>
             <AppHeader
                 onNewTask={canCreate ? () => setIsNewTaskModalOpen(true) : undefined}
             />
@@ -445,11 +456,11 @@ const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }
                         />
                         <div style={{ display: 'flex', gap: 8, background: '#fff', padding: 4, borderRadius: 8, border: '1px solid #eee' }}>
                             <AppstoreOutlined
-                                className={`view - switcher - icon ${viewMode === 'grid' ? 'active' : ''} `}
+                                className={`view-switcher-icon ${viewMode === 'grid' ? 'active' : ''}`}
                                 onClick={() => setViewMode('grid')}
                             />
                             <BarsOutlined
-                                className={`view - switcher - icon ${viewMode === 'list' ? 'active' : ''} `}
+                                className={`view-switcher-icon ${viewMode === 'list' ? 'active' : ''}`}
                                 onClick={() => setViewMode('list')}
                             />
                         </div>

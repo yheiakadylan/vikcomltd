@@ -117,7 +117,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {/* Header: ID + Date */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: 18, fontWeight: 800, color: isUrgent ? '#ff4d4f' : '#1677FF', lineHeight: 1 }}>
+                            <span style={{ fontSize: 18, fontWeight: 800, color: isUrgent ? '#ff4d4f' : 'var(--primary-color)', lineHeight: 1 }}>
                                 {isUrgent && <FireFilled style={{ marginRight: 4 }} />} #{order.readableId}
                             </span>
                             {order.created_at && (
@@ -152,7 +152,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                                 {deadlineDisplay}
                             </Tag>
                         ) : <span />}
-                        {order.sku && <Tag color="blue" style={{ margin: 0, border: 'none', background: '#e6f7ff', color: '#1890ff' }}>SKU: {order.sku}</Tag>}
+                        {order.sku && <Tag style={{ margin: 0, border: 'none', background: 'var(--primary-light)', color: 'var(--primary-color)' }}>SKU: {order.sku}</Tag>}
                     </div>
                 }
             />

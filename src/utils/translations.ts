@@ -31,6 +31,7 @@ export const translations = {
             tabs: {
                 new: 'New',
                 doing: 'Doing',
+                check: 'Check',
                 in_review: 'In Review',
                 need_fix: 'Need Fix',
                 done: 'Done'
@@ -198,6 +199,7 @@ export const translations = {
             tabs: {
                 new: 'Mới',
                 doing: 'Đang làm',
+                check: 'Kiểm tra',
                 in_review: 'Chờ duyệt',
                 need_fix: 'Cần sửa',
                 done: 'Hoàn thành'

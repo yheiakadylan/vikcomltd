@@ -21,7 +21,7 @@ const SearchInput: React.FC<SearchInputProps> = ({ value, onChange, onSearch, pl
             style={{
                 ...style
             }}
-            prefix={<SearchOutlined style={{ color: '#1677FF', fontSize: 18, marginRight: 8 }} />}
+            prefix={<SearchOutlined style={{ color: 'var(--primary-color)', fontSize: 18, marginRight: 8 }} />}
             className="cinematic-search"
         />
     );

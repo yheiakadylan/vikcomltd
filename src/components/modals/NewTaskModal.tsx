@@ -313,7 +313,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
 
     return (
         <Modal
-            title={<span style={{ color: colors.primary, fontSize: 20, fontWeight: 700 }}>{t('newTask.title')}</span>}
+            title={<span style={{ color: 'var(--primary-color)', fontSize: 20, fontWeight: 700 }}>{t('newTask.title')}</span>}
             open={open}
             onCancel={onCancel}
             footer={null}
@@ -345,13 +345,13 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
                             <div className="mockup-uploader" style={{
                                 width: '100%',
                                 aspectRatio: '1/1',
-                                border: `2px dashed ${mockupFile ? colors.primary : '#d9d9d9'}`,
+                                border: `2px dashed ${mockupFile ? 'var(--primary-color)' : '#d9d9d9'}`,
                                 borderRadius: 12,
                                 display: 'flex',
                                 flexDirection: 'column',
                                 justifyContent: 'center',
                                 alignItems: 'center',
-                                background: mockupFile ? '#E6F7FF' : '#fafafa',
+                                background: mockupFile ? 'var(--primary-light)' : '#fafafa',
                                 cursor: 'pointer',
                                 position: 'relative',
                                 overflow: 'hidden',
@@ -359,12 +359,12 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
                                 boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
                             }}
                                 onClick={() => !mockupFile && document.getElementById('mockup-input')?.click()}
-                                onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = colors.primary; e.currentTarget.style.background = '#E6F7FF'; }}
-                                onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = mockupFile ? colors.primary : '#d9d9d9'; e.currentTarget.style.background = mockupFile ? '#E6F7FF' : '#fafafa'; }}
+                                onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--primary-color)'; e.currentTarget.style.background = 'var(--primary-light)'; }}
+                                onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = mockupFile ? 'var(--primary-color)' : '#d9d9d9'; e.currentTarget.style.background = mockupFile ? 'var(--primary-light)' : '#fafafa'; }}
                                 onDrop={(e) => {
                                     e.preventDefault();
-                                    e.currentTarget.style.borderColor = mockupFile ? colors.primary : '#d9d9d9';
-                                    e.currentTarget.style.background = mockupFile ? '#E6F7FF' : '#fafafa';
+                                    e.currentTarget.style.borderColor = mockupFile ? 'var(--primary-color)' : '#d9d9d9';
+                                    e.currentTarget.style.background = mockupFile ? 'var(--primary-light)' : '#fafafa';
                                     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
                                         const file = e.dataTransfer.files[0];
                                         setMockupFile({
@@ -411,9 +411,9 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
                                 ) : (
                                     <div style={{ textAlign: 'center', color: '#8c8c8c', padding: 20 }}>
                                         <div style={{
-                                            width: 64, height: 64, background: '#E6F7FF', borderRadius: '50%',
+                                            width: 64, height: 64, background: 'var(--primary-light)', borderRadius: '50%',
                                             display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px',
-                                            color: colors.primary
+                                            color: 'var(--primary-color)'
                                         }}>
                                             <PictureOutlined style={{ fontSize: 32 }} />
                                         </div>
@@ -459,7 +459,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
                                     onChange={handleOrderIdChange}
                                     suffix={
                                         <div style={{ width: 20, display: 'flex', justifyContent: 'center' }}>
-                                            {fetching && <SyncOutlined spin style={{ color: colors.primary }} />}
+                                            {fetching && <SyncOutlined spin style={{ color: 'var(--primary-color)' }} />}
                                             {!fetching && fetchedOrder && <CheckCircleOutlined style={{ color: '#52c41a' }} />}
                                         </div>
                                     }
@@ -483,7 +483,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
                                             size="small"
                                             onClick={() => fillFormData(fetchedOrder.items[0])}
                                             loading={fetching}
-                                            style={{ background: colors.primary, borderColor: colors.primary }}
+                                            style={{ background: 'var(--primary-color)', borderColor: 'var(--primary-color)' }}
                                         >
                                             Fill Data
                                         </Button>
@@ -519,7 +519,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
                 <Form.Item label={<span style={{ fontWeight: 600 }}>{t('newTask.form.customerFiles')}</span>}>
                     <div
                         style={{
-                            border: `2px dashed ${customerFiles.length > 0 ? colors.primary : '#d9d9d9'}`,
+                            border: `2px dashed ${customerFiles.length > 0 ? 'var(--primary-color)' : '#d9d9d9'}`,
                             padding: '32px 24px',
                             borderRadius: 12,
                             textAlign: 'center',
@@ -529,9 +529,9 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
                             transition: 'all 0.3s'
                         }}
                         onClick={() => document.getElementById('customer-input')?.click()}
-                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.primary; e.currentTarget.style.background = '#E6F7FF'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = customerFiles.length > 0 ? colors.primary : '#d9d9d9'; e.currentTarget.style.background = '#fafafa'; }}
-                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = colors.primary; e.currentTarget.style.background = '#E6F7FF'; }}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary-color)'; e.currentTarget.style.background = 'var(--primary-light)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = customerFiles.length > 0 ? 'var(--primary-color)' : '#d9d9d9'; e.currentTarget.style.background = '#fafafa'; }}
+                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--primary-color)'; e.currentTarget.style.background = 'var(--primary-light)'; }}
                         onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#d9d9d9'; e.currentTarget.style.background = '#fafafa'; }}
                         onDrop={(e) => {
                             e.preventDefault();
@@ -551,7 +551,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
                             }
                         }}
                     >
-                        <CloudUploadOutlined style={{ fontSize: 48, color: colors.primary, marginBottom: 16 }} />
+                        <CloudUploadOutlined style={{ fontSize: 48, color: 'var(--primary-color)', marginBottom: 16 }} />
                         <div style={{ fontSize: 16, fontWeight: 500 }}>{t('newTask.form.clickToUpload')}</div>
                         <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>{t('newTask.form.waitingUpload')}</div>
                         <input
@@ -635,8 +635,8 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
                         size="large"
                         loading={loading}
                         style={{
-                            background: colors.primary,
-                            borderColor: colors.primary,
+                            background: 'var(--primary-color)',
+                            borderColor: 'var(--primary-color)',
                             borderRadius: 8,
                             paddingLeft: 32,
                             paddingRight: 32,
