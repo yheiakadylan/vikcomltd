@@ -440,9 +440,12 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
                                 {
                                     validator: async (_, value) => {
                                         if (!value) return Promise.resolve();
+                                        // Allow duplicate Team Name for Ideas
+                                        if (mode === 'idea') return Promise.resolve();
+
                                         const exists = await checkOrderExists(value, collectionName);
                                         if (exists) {
-                                            return Promise.reject(new Error((mode === 'idea' ? 'Team' : 'Order ID') + ' này đã tồn tại!'));
+                                            return Promise.reject(new Error('Order ID này đã tồn tại!'));
                                         }
                                         return Promise.resolve();
                                     }
@@ -503,7 +506,15 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
                             <Input placeholder={t('newTask.form.taskId')} style={{ borderRadius: 8 }} />
                         </Form.Item>
 
-                        <Form.Item name="sku" label={t('newTask.form.sku')}>
+                        <Form.Item
+                            name="sku"
+                            label={
+                                mode === 'idea'
+                                    ? `${t('newTask.form.sku')} (${t('common.required') || 'Required'})`
+                                    : `${t('newTask.form.sku')} (${t('common.optional') || 'Optional'})`
+                            }
+                            rules={[{ required: mode === 'idea', message: 'Idea bắt buộc phải có SKU!' }]}
+                        >
                             <Input placeholder={t('newTask.form.sku')} style={{ borderRadius: 8 }} />
                         </Form.Item>
 

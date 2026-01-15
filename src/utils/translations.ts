@@ -13,7 +13,9 @@ export const translations = {
             uploading: 'Uploading...',
             success: 'Success',
             error: 'Error',
-            loading: 'Loading...'
+            loading: 'Loading...',
+            required: 'Required',
+            optional: 'Optional'
         },
         header: {
             newTask: 'Create Task',
@@ -65,7 +67,7 @@ export const translations = {
                 mockupHint: 'Drag & Drop or Click to select',
                 orderId: 'Order ID',
                 taskId: 'Task Title (Optional)',
-                sku: 'SKU (if any)',
+                sku: 'SKU',
                 desc: 'Description',
                 customerFiles: 'Customer Files (Optional)',
                 clickToUpload: 'Click or Drag & Drop multiple images',
@@ -181,7 +183,9 @@ export const translations = {
             uploading: 'Đang tải lên...',
             success: 'Thành công',
             error: 'Lỗi',
-            loading: 'Đang tải...'
+            loading: 'Đang tải...',
+            required: 'Bắt buộc',
+            optional: 'Tùy chọn'
         },
         header: {
             newTask: 'Tạo Task',
@@ -233,7 +237,7 @@ export const translations = {
                 mockupHint: 'Kéo thả hoặc Click để chọn',
                 orderId: 'Mã Đơn Hàng (Order ID)',
                 taskId: 'Tiêu đề Task',
-                sku: 'Mã SKU (nếu có)',
+                sku: 'SKU',
                 desc: 'Mô tả chi tiết',
                 customerFiles: 'Ảnh khách gửi (Tùy chọn)',
                 clickToUpload: 'Click hoặc Kéo thả nhiều ảnh vào đây',

@@ -14,8 +14,13 @@ export const generateStoragePath = (order: Partial<Order> & { readableId: string
 
     const skuPart = order.sku ? `${order.sku}_` : '';
 
-    // Format: /PINK_POD_SYSTEM/{Type}/{Year}/{Month}/{ReadableID}_[SKU_]{Title}
-    // Type: FULFILL (for tasks) or IDEAS (for ideas)
+    // Format: /PINK_POD_SYSTEM/{Type}/{Year}/{Month}/{ReadableID}_{SKU_}{Title}
+    // Fulfill (tasks): ReadableID is OrderID.
+    // Ideas: ReadableID is TeamName. SKU is required.
+    // Result: 
+    // Fulfill: 1002_SKU123_Title (or 1002_Title if SKU empty)
+    // Idea: TeamA_SKU456_Title
+
     const rootDir = collectionName === 'ideas' ? '/PINK_POD_SYSTEM/IDEAS' : '/PINK_POD_SYSTEM/FULFILL';
     return `${rootDir}/${year}/${month}/${order.readableId}_${skuPart}${safeTitle}`;
 };
