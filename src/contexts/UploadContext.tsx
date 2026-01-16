@@ -1,189 +1,147 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import type { UploadItem, UploadStatus } from '../types';
-import { uploadFileToStorage } from '../services/firebase';
-import { updateOrder } from '../services/firebase';
-import { arrayUnion } from 'firebase/firestore';
-import { notification } from 'antd';
-import { useLanguage } from './LanguageContext';
-import { translations } from '../utils/translations';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { storage } from '../services/firebase';
+
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import type { UploadTask } from 'firebase/storage';
+
+// --- Configuration ---
+const MAX_CONCURRENT_UPLOADS = 5; // Limit parallel uploads to avoid 429
+
+// --- Types ---
+export type UploadStatus = 'pending' | 'compressing' | 'uploading' | 'success' | 'error' | 'paused';
+
+export interface UploadItem {
+    id: string;
+    file: File;
+    status: UploadStatus;
+    progress: number;
+    error?: string;
+    resultUrl?: string;
+    metadata?: any;
+    path: string; // Storage path
+    task?: UploadTask; // Firebase Upload Task for cancellation
+}
 
 interface UploadContextType {
     queue: UploadItem[];
-    enqueue: (files: File[], orderId: string, itemType: 'customerFiles' | 'designFiles' | 'mockupUrl', basePath: string, readableId?: string, collectionName?: string) => void;
+    addToQueue: (files: File[], basePath: string, metadata?: any) => Promise<string[]>; // Returns array of IDs
     retry: (id: string) => void;
     cancel: (id: string) => void;
     clearCompleted: () => void;
     isUploading: boolean;
-    registerCompletionAction: (orderId: string, action: 'auto_submit' | 'notify_creation') => void;
 }
 
 const UploadContext = createContext<UploadContextType | undefined>(undefined);
 
+export const useUpload = () => {
+    const context = useContext(UploadContext);
+    if (!context) throw new Error('useUpload must be used within UploadProvider');
+    return context;
+};
+
+// --- Provider ---
 export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { language } = useLanguage();
     const [queue, setQueue] = useState<UploadItem[]>([]);
-    const processingRef = useRef(false);
-    const notifiedOrdersRef = useRef<Set<string>>(new Set());
-    const completionActionsRef = useRef<Map<string, 'auto_submit' | 'notify_creation'>>(new Map());
+    const [activeCount, setActiveCount] = useState(0);
 
-    // Enqueue new files
-    const enqueue = useCallback((files: File[], orderId: string, targetField: 'customerFiles' | 'designFiles' | 'mockupUrl', basePath: string, readableId?: string, collectionName: string = 'tasks') => {
-        const newItems: UploadItem[] = files.map(file => ({
-            id: Math.random().toString(36).substr(2, 9),
-            file,
-            status: 'pending',
-            progress: 0,
-            orderId,
-            readableId,
-            targetField,
-            storagePath: `${basePath}/${file.name}`,
-            collectionName: collectionName // Store collection name
-        }));
+    // Queue Processor
+    useEffect(() => {
+        const processQueue = () => {
+            if (activeCount >= MAX_CONCURRENT_UPLOADS) return;
 
-        setQueue(prev => [...prev, ...newItems]);
+            const pendingItems = queue.filter(item => item.status === 'pending');
+            const availableSlots = MAX_CONCURRENT_UPLOADS - activeCount;
+            const itemsToStart = pendingItems.slice(0, availableSlots);
 
-        if (notifiedOrdersRef.current.has(orderId)) {
-            notifiedOrdersRef.current.delete(orderId);
-        }
-    }, []);
+            itemsToStart.forEach(nextItem => {
+                // Start Item
+                setActiveCount(prev => prev + 1);
 
-    const updateItemStatus = (id: string, status: UploadStatus, progress: number = 0, error?: string, resultUrl?: string) => {
-        setQueue(prev => prev.map(item =>
-            item.id === id ? { ...item, status, progress, error, resultUrl } : item
-        ));
+                // Optimistically update status to prevent re-selection
+                updateItem(nextItem.id, { status: 'uploading', progress: 0 });
+
+                const startUpload = async () => {
+                    try {
+                        // Check logic again inside async just in case cancellation happened instantly (rare)
+                        if (!queue.find(i => i.id === nextItem.id)) {
+                            setActiveCount(prev => prev - 1);
+                            return;
+                        }
+
+                        // 2. Upload Phase (Resumable)
+                        const storageRef = ref(storage, nextItem.path);
+                        const uploadTask = uploadBytesResumable(storageRef, nextItem.file);
+
+                        // Attach task to state so we can cancel it
+                        updateItem(nextItem.id, { task: uploadTask });
+
+                        uploadTask.on('state_changed',
+                            (snapshot) => {
+                                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                                updateItem(nextItem.id, { progress });
+                            },
+                            (error) => {
+                                console.error("Upload error", error);
+                                updateItem(nextItem.id, { status: 'error', error: error.message });
+                                setActiveCount(prev => prev - 1);
+                            },
+                            async () => {
+                                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                                updateItem(nextItem.id, { status: 'success', progress: 100, resultUrl: downloadURL });
+                                setActiveCount(prev => prev - 1);
+
+                                // Callback via metadata if needed
+                                if (nextItem.metadata?.onSuccess) {
+                                    nextItem.metadata.onSuccess(downloadURL);
+                                }
+                            }
+                        );
+
+                    } catch (err: any) {
+                        updateItem(nextItem.id, { status: 'error', error: err.message });
+                        setActiveCount(prev => prev - 1);
+                    }
+                };
+
+                startUpload();
+            });
+        };
+
+        processQueue();
+    }, [queue, activeCount]);
+
+    const updateItem = (id: string, partial: Partial<UploadItem>) => {
+        setQueue(prev => prev.map(item => item.id === id ? { ...item, ...partial } : item));
     };
 
-    const registerCompletionAction = useCallback((orderId: string, action: 'auto_submit' | 'notify_creation') => {
-        completionActionsRef.current.set(orderId, action);
-    }, []);
+    const addToQueue = async (files: File[], basePath: string, metadata?: any): Promise<string[]> => {
+        const newItems: UploadItem[] = files.map(file => {
+            const id = Math.random().toString(36).substr(2, 9) + Date.now();
+            // Handle filename duplicates or simple sanitization
+            const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const path = `${basePath}/${cleanName}`;
 
-    // Check for Order Completion
-    useEffect(() => {
-        const orders = Array.from(new Set(queue.map(i => i.orderId)));
-
-        orders.forEach(oid => {
-            const items = queue.filter(i => i.orderId === oid);
-            if (items.length === 0) return;
-
-            const allSuccess = items.every(i => i.status === 'success');
-            const hasPending = items.some(i => i.status === 'pending' || i.status === 'uploading' || i.status === 'retrying');
-
-            // Assume same collection for all items in an order (safe assumption)
-            const collectionName = items[0]?.collectionName || 'tasks';
-
-            if (allSuccess && !hasPending) {
-                const action = completionActionsRef.current.get(oid);
-                const readableId = items[0]?.readableId || oid;
-
-                if (action === 'auto_submit') {
-                    // Perform Auto Submit
-                    updateOrder(oid, { status: 'in_review', updatedAt: new Date() }, false, collectionName)
-                        .then(() => {
-                            notification.success({
-                                title: `${translations[language].notifications.uploadSuccess.message}${readableId}`,
-                                description: translations[language].notifications.uploadSuccess.description,
-                                placement: 'bottomRight',
-                                duration: 5
-                            });
-                            completionActionsRef.current.delete(oid);
-                        })
-                        .catch(err => {
-                            console.error("Auto Submit Failed", err);
-                            notification.error({
-                                title: `${translations[language].notifications.uploadError.message}${readableId}`,
-                                description: translations[language].notifications.uploadError.description,
-                                duration: 5
-                            });
-                        });
-                    return;
-                } else if (action === 'notify_creation') {
-                    notification.success({
-                        title: `${translations[language].notifications.createTaskSuccess.message}${readableId}`,
-                        description: translations[language].notifications.createTaskSuccess.description,
-                        placement: 'bottomRight',
-                        duration: 5
-                    });
-                    completionActionsRef.current.delete(oid);
-                    return;
-                }
-
-                if (!notifiedOrdersRef.current.has(oid)) {
-                    notification.success({
-                        title: `${translations[language].notifications.uploadComplete.message}${readableId}`,
-                        description: translations[language].notifications.uploadComplete.description,
-                        placement: 'bottomRight',
-                        duration: 5,
-                        key: oid
-                    });
-
-                    notifiedOrdersRef.current.add(oid);
-                }
-            } else {
-                if (notifiedOrdersRef.current.has(oid)) {
-                    notifiedOrdersRef.current.delete(oid);
-                }
-            }
-        });
-    }, [queue, language]);
-
-    const processNext = useCallback(async () => {
-        if (processingRef.current) return;
-
-        const nextItem = queue.find(item => item.status === 'pending' || item.status === 'retrying');
-        if (!nextItem) return;
-
-        processingRef.current = true;
-        const { id, file, storagePath, orderId, targetField, collectionName = 'tasks' } = nextItem;
-
-        updateItemStatus(id, 'uploading', 10);
-
-        try {
-            const finalPath = storagePath ? (storagePath.startsWith('/') ? storagePath.substring(1) : storagePath) : `uploads/${orderId}/${file.name}`;
-            const firebaseUrl = await uploadFileToStorage(file, finalPath);
-            updateItemStatus(id, 'uploading', 90);
-
-            const attachment = {
-                name: file.name,
-                link: firebaseUrl,
-                type: file.type,
+            return {
+                id,
+                file,
+                status: 'pending',
+                progress: 0,
+                path,
+                metadata
             };
+        });
 
-            const updateData: any = {};
-            if (targetField === 'mockupUrl') {
-                updateData[targetField] = firebaseUrl;
-            } else {
-                updateData[targetField] = arrayUnion(attachment);
-            }
-
-            // PASS COLLECTION NAME HERE
-            await updateOrder(orderId, updateData, false, collectionName);
-
-            updateItemStatus(id, 'success', 100, undefined, firebaseUrl);
-        } catch (error: any) {
-            console.error("Upload Error Context:", error);
-            updateItemStatus(id, 'error', 0, error.message || "Upload Failed");
-        } finally {
-            if (queue.find(i => i.id === id)?.status !== 'retrying') {
-                processingRef.current = false;
-            }
-        }
-    }, [queue]);
-
-    // Watch queue
-    useEffect(() => {
-        const hasPending = queue.some(i => i.status === 'pending');
-        const isProcessing = queue.some(i => i.status === 'uploading');
-
-        if (hasPending && !isProcessing && !processingRef.current) {
-            processNext();
-        }
-    }, [queue, processNext]);
+        setQueue(prev => [...prev, ...newItems]);
+        return newItems.map(i => i.id);
+    };
 
     const retry = (id: string) => {
-        updateItemStatus(id, 'pending', 0, undefined);
+        updateItem(id, { status: 'pending', progress: 0, error: undefined });
     };
 
     const cancel = (id: string) => {
+        const item = queue.find(i => i.id === id);
+        if (item?.task) item.task.cancel();
         setQueue(prev => prev.filter(i => i.id !== id));
     };
 
@@ -191,17 +149,16 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setQueue(prev => prev.filter(i => i.status !== 'success'));
     };
 
-    const isUploading = queue.some(i => i.status === 'uploading' || i.status === 'pending');
-
     return (
-        <UploadContext.Provider value={{ queue, enqueue, retry, cancel, clearCompleted, isUploading, registerCompletionAction }}>
+        <UploadContext.Provider value={{
+            queue,
+            addToQueue,
+            retry,
+            cancel,
+            clearCompleted,
+            isUploading: activeCount > 0
+        }}>
             {children}
         </UploadContext.Provider>
     );
-};
-
-export const useUpload = () => {
-    const context = useContext(UploadContext);
-    if (!context) throw new Error("useUpload must be used within UploadProvider");
-    return context;
 };

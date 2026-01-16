@@ -15,7 +15,7 @@ interface OrderCardProps {
     isAdmin?: boolean;
     onOpenDetail: (order: Order) => void;
     onOpenGiveBack: (e: React.MouseEvent, order: Order) => void;
-    onDelete: (orderId: string) => void;
+    onDelete: (order: Order) => void;
     onQuickApprove?: (e: React.MouseEvent, order: Order) => void;
     onQuickReject?: (e: React.MouseEvent, order: Order) => void;
 }
@@ -52,15 +52,15 @@ const OrderCard: React.FC<OrderCardProps> = ({
             onClick={() => onOpenDetail(order)}
             cover={
                 <div
-                    style={{ height: 180, position: 'relative', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+                    style={{ height: 180, aspectRatio: '1/1', position: 'relative', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
                 >
                     {order.mockupUrl ? (
                         <SmartImage
                             src={order.mockupUrl}
                             alt={order.title}
                             width={'100%'}
-                            height={200}
-                            style={{ borderTopLeftRadius: 12, borderTopRightRadius: 12 }}
+                            height={'100%'}
+                            style={{ borderTopLeftRadius: 12, borderTopRightRadius: 12, objectFit: 'contain' }}
 
                             fallback={`https://placehold.co/400x300/e6e6e6/a3a3a3?text=${t('dashboard.card.noImage')}`}
                             preview={false}
@@ -85,7 +85,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                     {
                         isCS && (
                             <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }} onClick={e => e.stopPropagation()}>
-                                <Popconfirm title={t('dashboard.card.confirmDelete')} onConfirm={() => onDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText={t('common.delete')} cancelText={t('common.cancel')}>
+                                <Popconfirm title={t('dashboard.card.confirmDelete')} onConfirm={() => onDelete(order)} onCancel={(e) => e?.stopPropagation()} okText={t('common.delete')} cancelText={t('common.cancel')}>
                                     <Button shape="circle" size="small" danger icon={<DeleteOutlined />} style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} />
                                 </Popconfirm>
                             </div>
@@ -97,14 +97,18 @@ const OrderCard: React.FC<OrderCardProps> = ({
                 [
                     // Manager Check Actions
                     (isAdmin && order.status === 'check' && onQuickApprove && onQuickReject) ? (
-                        <Popconfirm title="Reject to Fix?" onConfirm={(e: any) => onQuickReject(e, order)} onCancel={(e) => e?.stopPropagation()} okText="Reject" cancelText="Cancel">
-                            <Button type="text" danger size="small">Reject</Button>
-                        </Popconfirm>
+                        <span onClick={e => e.stopPropagation()}>
+                            <Popconfirm title="Reject to Fix?" onConfirm={(e: any) => onQuickReject(e, order)} onCancel={(e) => e?.stopPropagation()} okText="Reject" cancelText="Cancel">
+                                <Button type="text" danger size="small">Reject</Button>
+                            </Popconfirm>
+                        </span>
                     ) : null,
                     (isAdmin && order.status === 'check' && onQuickApprove) ? (
-                        <Popconfirm title="Approve for Review?" onConfirm={(e: any) => onQuickApprove(e, order)} onCancel={(e) => e?.stopPropagation()} okText="Approve" cancelText="Cancel">
-                            <Button type="text" style={{ color: '#52c41a' }} size="small">Approve</Button>
-                        </Popconfirm>
+                        <span onClick={e => e.stopPropagation()}>
+                            <Popconfirm title="Approve for Review?" onConfirm={(e: any) => onQuickApprove(e, order)} onCancel={(e) => e?.stopPropagation()} okText="Approve" cancelText="Cancel">
+                                <Button type="text" style={{ color: '#52c41a' }} size="small">Approve</Button>
+                            </Popconfirm>
+                        </span>
                     ) : null,
 
                     // Original DS Action

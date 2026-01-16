@@ -12,7 +12,7 @@ interface OrderRowProps {
     isUrgent: boolean;
     isCS: boolean;
     onOpenDetail: (order: Order) => void;
-    onDelete: (orderId: string) => void;
+    onDelete: (order: Order) => void;
 }
 
 const OrderRow: React.FC<OrderRowProps> = ({
@@ -80,7 +80,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
             </div>
             {isCS && (
                 <div style={{ display: 'flex', alignItems: 'center', paddingLeft: 12 }}>
-                    <Popconfirm title={t('dashboard.card.confirmDelete')} onConfirm={() => onDelete(order.id)} onCancel={(e) => e?.stopPropagation()} okText={t('common.delete')} cancelText={t('common.cancel')}>
+                    <Popconfirm title={t('dashboard.card.confirmDelete')} onConfirm={() => onDelete(order)} onCancel={(e) => e?.stopPropagation()} okText={t('common.delete')} cancelText={t('common.cancel')}>
                         <Button type="text" danger icon={<DeleteOutlined />} onClick={e => e.stopPropagation()} />
                     </Popconfirm>
                 </div>

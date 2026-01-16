@@ -9,10 +9,11 @@ import type { Order, OrderStatus } from '../types';
 import { deleteOrder } from '../services/firebase';
 import { generateStoragePath } from '../utils/order';
 import { sortOrders } from '../utils/sortOrders';
-import NewTaskModal from '../components/modals/NewTaskModal';
-import TaskDetailModal from '../components/modals/TaskDetailModal';
-import RejectModal from '../components/modals/RejectModal';
-import GiveBackModal from '../components/modals/GiveBackModal';
+// Lazy load modals for performance
+const NewTaskModal = React.lazy(() => import('../components/modals/NewTaskModal'));
+const TaskDetailModal = React.lazy(() => import('../components/modals/TaskDetailModal'));
+const RejectModal = React.lazy(() => import('../components/modals/RejectModal'));
+const GiveBackModal = React.lazy(() => import('../components/modals/GiveBackModal'));
 import AppHeader from '../components/layout/AppHeader';
 import SearchInput from '../components/common/SearchInput';
 import OrderCard from '../components/dashboard/OrderCard';
@@ -286,20 +287,17 @@ const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }
 
 
 
-    const handleDelete = React.useCallback(async (orderId: string) => {
+    const handleDelete = React.useCallback(async (order: Order) => {
         try {
-            // Find order to generate storage prefix for cleanup
-            const order = orders.find(o => o.id === orderId);
+            const prefix = order.storagePath || generateStoragePath(order as any, collectionName);
 
-            const prefix = order ? (order.storagePath || generateStoragePath(order as any, collectionName)) : undefined;
-
-            await deleteOrder(orderId, prefix, collectionName);
+            await deleteOrder(order.id, prefix, collectionName);
             message.success(t('dashboard.messages.deleteSuccess'));
         } catch (error) {
             console.error("Delete Error:", error);
             message.error(t('dashboard.messages.deleteError'));
         }
-    }, [orders, t, message]); // Added t dependency
+    }, [collectionName, t, message]); // Removed 'orders' dependency
 
 
     const handleQuickApprove = React.useCallback(async (e: React.MouseEvent, order: Order) => {
@@ -472,22 +470,25 @@ const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }
                 </div>
             </Content>
 
-            <NewTaskModal
-                open={isNewTaskModalOpen}
-                onCancel={() => setIsNewTaskModalOpen(false)}
-                onSuccess={() => setIsNewTaskModalOpen(false)}
-                collectionName={collectionName}
-                mode={mode}
-            />
-            {
-                selectedOrder && (
-                    <>
-                        <TaskDetailModal order={selectedOrder} open={isDetailModalOpen} onCancel={() => { setIsDetailModalOpen(false); setSelectedOrder(null); }} onUpdate={() => { }} />
-                        <RejectModal order={selectedOrder} open={isRejectModalOpen} onCancel={() => { setIsRejectModalOpen(false); setSelectedOrder(null); }} onSuccess={() => { }} />
-                        <GiveBackModal order={selectedOrder} open={isGiveBackModalOpen} onCancel={() => { setIsGiveBackModalOpen(false); setSelectedOrder(null); }} onSuccess={() => { }} />
-                    </>
-                )
-            }
+            {/* Lazy Load Modals */}
+            <React.Suspense fallback={null}>
+                <NewTaskModal
+                    open={isNewTaskModalOpen}
+                    onCancel={() => setIsNewTaskModalOpen(false)}
+                    onSuccess={() => setIsNewTaskModalOpen(false)}
+                    collectionName={collectionName}
+                    mode={mode}
+                />
+                {
+                    selectedOrder && (
+                        <>
+                            <TaskDetailModal order={selectedOrder} open={isDetailModalOpen} onCancel={() => { setIsDetailModalOpen(false); setSelectedOrder(null); }} onUpdate={() => { }} />
+                            <RejectModal order={selectedOrder} open={isRejectModalOpen} onCancel={() => { setIsRejectModalOpen(false); setSelectedOrder(null); }} onSuccess={() => { }} />
+                            <GiveBackModal order={selectedOrder} open={isGiveBackModalOpen} onCancel={() => { setIsGiveBackModalOpen(false); setSelectedOrder(null); }} onSuccess={() => { }} />
+                        </>
+                    )
+                }
+            </React.Suspense>
         </Layout >
     );
 };

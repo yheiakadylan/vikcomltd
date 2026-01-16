@@ -16,7 +16,7 @@ const UploadWidget: React.FC = () => {
 
     if (queue.length === 0) return null;
 
-    const pendingCount = queue.filter(i => i.status === 'pending' || i.status === 'uploading' || i.status === 'retrying').length;
+    const pendingCount = queue.filter(i => i.status === 'pending' || i.status === 'uploading' || i.status === 'compressing').length;
     const errorCount = queue.filter(i => i.status === 'error').length;
 
     // Styles

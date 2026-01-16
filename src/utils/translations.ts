@@ -123,8 +123,12 @@ export const translations = {
             },
             activities: {
                 empty: 'No activities yet',
-                placeholder: 'Enter comment...',
+                placeholder: 'Type a message...',
                 send: 'Send'
+            },
+            rejection: {
+                fixRequest: 'NEED FIX',
+                attachment: 'Attachment'
             }
         },
         notifications: {
@@ -295,6 +299,10 @@ export const translations = {
                 empty: 'Chưa có hoạt động nào',
                 placeholder: 'Nhập trao đổi...',
                 send: 'Gửi'
+            },
+            rejection: {
+                fixRequest: 'CẦN SỬA',
+                attachment: 'File đính kèm'
             }
         },
         notifications: {

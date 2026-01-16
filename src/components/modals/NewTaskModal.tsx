@@ -5,8 +5,8 @@ import { UploadOutlined, FireOutlined, DeleteOutlined, EyeOutlined, CloudUploadO
 import { colors } from '../../theme/themeConfig';
 import type { Order } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-import { doc, setDoc, collection } from 'firebase/firestore';
-import { db, checkOrderExists } from '../../services/firebase';
+import { doc, setDoc, collection, updateDoc, arrayUnion } from 'firebase/firestore';
+import { db, checkOrderExists, updateOrder } from '../../services/firebase';
 import { useUpload } from '../../contexts/UploadContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import ImagePreview from '../common/ImagePreview';
@@ -185,7 +185,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
         if (autoFillVisible) setAutoFillVisible(false);
     };
 
-    const { enqueue, registerCompletionAction } = useUpload();
+    const { addToQueue } = useUpload();
 
     const handlePreview = (url: string) => {
         setPreviewImage(url);
@@ -233,6 +233,8 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
         setCustomerFiles(prev => prev.map(f => f.uid === uid ? { ...f, name: newName } : f));
     };
 
+    const isImageFile = (filename: string) => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(filename);
+
     const onFinish = async (values: any) => {
         if (!user) return;
 
@@ -275,9 +277,6 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
 
             await setDoc(newOrderRef, orderData);
 
-            // Register completion action BEFORE enqueuing to be safe
-            registerCompletionAction(orderId, 'notify_creation');
-
             // 2. Enqueue Mockup
             const originalMockupName = mockupFile.file.name;
             const lastDot = originalMockupName.lastIndexOf('.');
@@ -285,20 +284,37 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ open, onCancel, onSuccess, 
             const finalMockupName = `mockup${ext}`;
             const renamedMockupFile = new File([mockupFile.file], finalMockupName, { type: mockupFile.file.type });
 
-            enqueue([renamedMockupFile], orderId, 'mockupUrl', `${storagePath}/Mockup`, readableId, collectionName);
+            addToQueue([renamedMockupFile], `${storagePath}/Mockup`, {
+                onSuccess: async (url: string) => {
+                    await updateOrder(orderId, { mockupUrl: url }, true, collectionName);
+                }
+            });
 
             // 3. Enqueue Customer Files
             if (customerFiles.length > 0) {
-                const filesToUpload = customerFiles.map(cFile => {
+                // Upload each file individually to control metadata/callback closure
+                customerFiles.forEach(cFile => {
                     const originalName = cFile.file.name;
                     const lastDot = originalName.lastIndexOf('.');
                     const ext = lastDot !== -1 ? originalName.substring(lastDot) : '';
                     const finalName = cFile.name + ext; // User edited name + ext
+                    const fileObj = new File([cFile.file], finalName, { type: cFile.file.type });
 
-                    return new File([cFile.file], finalName, { type: cFile.file.type });
+                    addToQueue([fileObj], `${storagePath}/Customer`, {
+                        onSuccess: async (url: string) => {
+                            // Use arrayUnion to append to list
+                            await updateDoc(doc(db, collectionName, orderId), {
+                                customerFiles: arrayUnion({
+                                    id: Math.random().toString(36).substr(2, 9),
+                                    url: url,
+                                    name: finalName,
+                                    type: isImageFile(finalName) ? 'image' : 'file',
+                                    uploadedAt: new Date()
+                                })
+                            });
+                        }
+                    });
                 });
-
-                enqueue(filesToUpload, orderId, 'customerFiles', `${storagePath}/Customer`, readableId, collectionName);
             }
 
             message.success('Đã tạo task! File đang được upload nền...');

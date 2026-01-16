@@ -34,6 +34,7 @@ import SmartImage from '../common/SmartImage';
 
 const { TextArea } = Input;
 const { Dragger } = Upload;
+const RejectModal = React.lazy(() => import('./RejectModal'));
 
 interface TaskDetailModalProps {
     open: boolean;
@@ -62,8 +63,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
 
     // Reject/Fix State
     const [rejectModalOpen, setRejectModalOpen] = useState(false);
-    const [rejectReason, setRejectReason] = useState('');
-    const [rejectLoading, setRejectLoading] = useState(false);
 
     // Urgent State
     const [isUrgent, setIsUrgent] = useState(false);
@@ -101,10 +100,13 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
 
     useEffect(() => {
         if (open && order) {
+            // Strip [REJECTED] and [EVIDENCE] from description for display in the input box
+            const cleanDescription = (order.description || '').split('[REJECTED]:')[0].trim();
+
             form.setFieldsValue({
                 title: order.title,
                 sku: order.sku,
-                description: order.description,
+                description: cleanDescription,
                 category: order.category,
                 quantity: order.quantity,
                 deadline: order.deadline ? dayjs((order.deadline as any).seconds ? (order.deadline as any).seconds * 1000 : order.deadline) : null
@@ -178,45 +180,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
     };
 
     const handleReject = () => {
-        setRejectReason('');
         setRejectModalOpen(true);
-    };
-
-    const submitReject = async () => {
-        if (!order || !user) return;
-        setRejectLoading(true);
-        try {
-            // Append FIX reason to description
-            const currentDesc = order.description || '';
-            const newDesc = `${currentDesc}\n\nFIX: ${rejectReason}`;
-
-            await updateOrder(order.id, {
-                status: 'need_fix',
-                description: newDesc
-            }, true, order.collectionName); // Use skipAutoLog
-
-            // Log with reason
-            await addOrderLog(order.id, {
-                action: 'status_change',
-                actorId: user.uid,
-                actorName: user.displayName || user.email?.split('@')[0] || 'CS',
-                actorDisplayName: user.displayName,
-                actionType: 'reject',
-                actionLabel: 'Requested Fix',
-                details: 'Requested fix',
-                content: `Reason: ${rejectReason}`
-            }, order.collectionName);
-
-            message.success('Requested fix');
-            onUpdate();
-            setRejectModalOpen(false);
-            onCancel(); // Close main modal
-        } catch (e) {
-            console.error(e);
-            message.error('Error submitting fix request');
-        } finally {
-            setRejectLoading(false);
-        }
     };
 
     const handleManagerCheckApprove = async () => {
@@ -284,7 +248,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                 const baseStoragePath = generateStoragePath(order as any, order.collectionName);
                 const fullStoragePath = `${baseStoragePath}/Designs/${file.name}`;
 
-                // Remove leading slash for Firebase Storage
                 const firebasePath = fullStoragePath.startsWith('/') ? fullStoragePath.substring(1) : fullStoragePath;
 
                 const url = await uploadFileToStorage(file, firebasePath);
@@ -525,7 +488,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                 key: '1',
                                 label: <span><FileOutlined /> {t('taskDetail.tabs.details')}</span>,
                                 children: (
-                                    <div style={{ height: 600, overflowY: 'auto', paddingRight: 8 }} >
+                                    <div style={{ height: 700, overflowY: 'auto', paddingRight: 8 }} >
                                         <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                             {(isAdmin || isDS) && (
                                                 <Tag color="purple" style={{ margin: 0 }}>
@@ -572,6 +535,97 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                 </Col>
                                                 {/* Removed Category, Quantity, Deadline */}
                                             </Row>
+                                            {/* EVIDENCE / REJECTION HISTORY DISPLAY */}
+                                            {(() => {
+                                                const rawDesc = order?.description || '';
+                                                if (!rawDesc.includes('[REJECTED]:')) return null;
+
+                                                // Split by [REJECTED]: marker
+                                                // Filter out empty parts (e.g. strict text before first rejection)
+                                                // Note: The first part is usually the original description, we ignore it for this specific UI block.
+                                                const parts = rawDesc.split('[REJECTED]:');
+
+                                                // We only care about parts after the first one (which are the rejections)
+                                                // However, if the description STARTS with [REJECTED], first part is empty. 
+                                                // Let's iterate and find blocks.
+
+                                                const rejections = parts.slice(1).map((part, index) => {
+                                                    // Part contains "Reason... \n\n [EVIDENCE]: ...urls..."
+                                                    const evidenceSplit = part.split('[EVIDENCE]:');
+                                                    const reason = evidenceSplit[0].trim();
+                                                    const evidenceSection = evidenceSplit[1] || '';
+
+                                                    // Extract URLs
+                                                    const urlMatches = evidenceSection.matchAll(/- Evidence: (https?:\/\/[^\s]+)/g);
+                                                    const urls = Array.from(urlMatches).map(m => m[1]);
+
+                                                    return {
+                                                        id: index + 1,
+                                                        reason,
+                                                        urls
+                                                    };
+                                                }); // Filter out items with no reason AND no evidence? No, usually significant.
+
+                                                if (rejections.length === 0) return null;
+
+                                                return (
+                                                    <div style={{ marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                                        {rejections.map((item, idx) => (
+                                                            <div key={idx} style={{
+                                                                padding: '12px 16px',
+                                                                background: '#fff1f0',
+                                                                border: '1px solid #ffccc7', // Red border
+                                                                borderRadius: 8,
+                                                                boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                                                            }}>
+                                                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                                                                    <div style={{
+                                                                        background: '#cf1322', color: '#fff',
+                                                                        fontSize: 11, fontWeight: 700,
+                                                                        padding: '2px 8px', borderRadius: 4,
+                                                                        flexShrink: 0, marginTop: 2
+                                                                    }}>
+                                                                        {t('taskDetail.rejection.fixRequest')} #{item.id}
+                                                                    </div>
+                                                                    <div style={{ flex: 1 }}>
+                                                                        <div style={{ fontWeight: 600, color: '#434343', whiteSpace: 'pre-wrap' }}>
+                                                                            {item.reason}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {item.urls.length > 0 && (
+                                                                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #ffccc7' }}>
+                                                                        <div style={{ fontSize: 12, color: '#cf1322', marginBottom: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                            <FileImageOutlined /> {t('taskDetail.rejection.attachment')}:
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                                                            {item.urls.map((url, uIdx) => (
+                                                                                <div key={uIdx} style={{ position: 'relative' }}>
+                                                                                    <Image
+                                                                                        src={getOptimizedImageUrl(url, 100, 100, 'cover')}
+                                                                                        width={80}
+                                                                                        height={80}
+                                                                                        style={{ borderRadius: 6, border: '1px solid #ccce', background: '#fff' }}
+                                                                                        preview={{ src: url }}
+                                                                                    />
+                                                                                    <Button
+                                                                                        size="small"
+                                                                                        icon={<DownloadOutlined />}
+                                                                                        style={{ position: 'absolute', bottom: -6, right: -6, transform: 'scale(0.8)', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
+                                                                                        onClick={(e) => handleDownload(e, url, `evidence_${idx}_${uIdx}.png`)}
+                                                                                    />
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })()}
+
                                             <Form.Item name="description" label={t('taskDetail.form.desc')}>
                                                 <TextArea rows={5} showCount maxLength={1000} style={{ resize: 'none' }} />
                                             </Form.Item>
@@ -888,23 +942,17 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                     />
                 </Col >
             </Row >
-            {/* Reject Reason Modal */}
-            <Modal
-                title="Yêu cầu sửa (Request Fix)"
+            {/* Reject Reason Modal - Use External Component */}
+            <RejectModal
                 open={rejectModalOpen}
+                order={order}
                 onCancel={() => setRejectModalOpen(false)}
-                onOk={submitReject}
-                confirmLoading={rejectLoading}
-                okText="Gửi yêu cầu"
-                cancelText="Hủy"
-            >
-                <TextArea
-                    rows={4}
-                    value={rejectReason}
-                    onChange={(e) => setRejectReason(e.target.value)}
-                    placeholder="Nhập lý do yêu cầu sửa"
-                />
-            </Modal>
+                onSuccess={() => {
+                    setRejectModalOpen(false);
+                    onCancel(); // Close main modal or just refresh? Usually close or refresh.
+                    onUpdate(); // Refresh logs/status
+                }}
+            />
         </Modal >
     );
 };

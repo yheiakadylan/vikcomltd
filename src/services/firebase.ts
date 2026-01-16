@@ -1,9 +1,6 @@
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc, deleteDoc, addDoc, getCountFromServer, limit, startAfter, QueryDocumentSnapshot, runTransaction, writeBatch } from 'firebase/firestore';
-
-// ...
-
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, updateDoc, collection, query, orderBy, onSnapshot, where, getDocs, setDoc, getDoc, deleteDoc, addDoc, getCountFromServer, limit, startAfter, QueryDocumentSnapshot, runTransaction, writeBatch } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getMessaging, isSupported } from "firebase/messaging";
 import type { Order, User } from '../types';
@@ -18,13 +15,19 @@ const firebaseConfig = {
     appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-
 const app = initializeApp(firebaseConfig);
 
 export { app };
+// ...
 export const auth = getAuth(app);
 auth.languageCode = 'en'; // Defaults to English
-export const db = getFirestore(app);
+
+// Initialize Firestore with persistent cache
+export const db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+    })
+});
 export const storage = getStorage(app);
 
 // HÀM QUAN TRỌNG: Khởi tạo messaging an toàn

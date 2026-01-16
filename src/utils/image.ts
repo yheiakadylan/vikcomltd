@@ -23,8 +23,11 @@ export const getOptimizedImageUrl = (
     const encodedUrl = encodeURIComponent(url);
 
     // 3. Construct wsrv.nl URL
-    // &n: number of pages (for pdf/gif, usually 1 for static thumb)
-    let finalUrl = `https://wsrv.nl/?url=${encodedUrl}&w=${width}&h=${height}&fit=${fit}&we&il`;
+    // &we: WebP support
+    // &il: Interlaced (progressive)
+    // &q: Quality (80 is good balance)
+    // &output: Force format (optional, rely on &we usually)
+    let finalUrl = `https://wsrv.nl/?url=${encodedUrl}&w=${width}&h=${height}&fit=${fit}&we&il&q=80`;
 
     // 4. Append Version for Cache Busting (if provided)
     if (version) {
@@ -35,3 +38,5 @@ export const getOptimizedImageUrl = (
 
     return finalUrl;
 };
+
+
