@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Image, Skeleton, Button } from 'antd';
+import { Image, Button } from 'antd';
 import { FileImageOutlined, LinkOutlined } from '@ant-design/icons';
 import { getOptimizedImageUrl } from '../../utils/image';
 
@@ -27,11 +27,11 @@ const SmartImage: React.FC<SmartImageProps> = ({
     fit = 'cover',
 }) => {
     const [hasError, setHasError] = useState(false);
+    const [displaySrc, setDisplaySrc] = useState<string | undefined>(src); // Start with original
 
     // 1. Retina/High-DPI Support
     const getTargetDimensions = () => {
         const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-        // Cap DPR at 3 to avoid excessive file sizes on mobile
         const finalDpr = Math.min(dpr, 3);
 
         const w = typeof width === 'number' ? Math.round(width * finalDpr) : 800;
@@ -39,70 +39,41 @@ const SmartImage: React.FC<SmartImageProps> = ({
         return { w, h };
     };
 
-    const [isUsingFallback, setIsUsingFallback] = useState(false);
-
-    // Calculate displaySrc
-    const displaySrc = React.useMemo(() => {
-        // If fallback mode is active or no Image, return original
-        if (isUsingFallback || !src) return src;
-
-        const shouldOptimize = src.startsWith('http') || src.startsWith('https');
-        if (!shouldOptimize) return src;
-
-        const { w, h } = getTargetDimensions();
-
-        return getOptimizedImageUrl(
-            src,
-            w,
-            h,
-            fit
-        );
-    }, [src, width, height, fit, isUsingFallback]);
-
-    const isCached = React.useMemo(() => {
-        if (typeof window === 'undefined' || !displaySrc) return false;
-        const img = new window.Image();
-        img.src = displaySrc;
-        return img.complete;
-    }, [displaySrc]);
-
-    const [imgLoading, setImgLoading] = useState(!isCached);
     const objectFitStyle: React.CSSProperties['objectFit'] = (fit === 'inside' || fit === 'contain') ? 'contain' : 'cover';
 
+    // 2. Background preload optimized image
     useEffect(() => {
-        if (displaySrc) {
-            // Reset error state when src changes
-            if (!isUsingFallback) setHasError(false);
+        if (!src) return;
 
-            if (isCached) {
-                setImgLoading(false);
-            } else {
-                setImgLoading(true);
-            }
-        }
-    }, [displaySrc, isCached, isUsingFallback]);
+        // Always show original first
+        setDisplaySrc(src);
+        setHasError(false);
 
-    // 2. Fail-safe Fallback
+        const shouldOptimize = src.startsWith('http') || src.startsWith('https');
+        if (!shouldOptimize) return;
+
+        const { w, h } = getTargetDimensions();
+        const optimizedUrl = getOptimizedImageUrl(src, w, h, fit);
+
+        // Silently preload optimized image in background
+        const img = new window.Image();
+        img.src = optimizedUrl;
+
+        img.onload = () => {
+            // Once cached, swap to optimized version smoothly
+            setDisplaySrc(optimizedUrl);
+        };
+
+        img.onerror = () => {
+            // If optimization fails, keep using original (already displayed)
+            console.warn(`SmartImage: Optimization failed for ${optimizedUrl}, using original.`);
+        };
+
+    }, [src, width, height, fit]);
+
     const handleError = () => {
-        if (!isUsingFallback && src && displaySrc !== src) {
-            // If optimized image fails, try original
-            console.warn(`SmartImage: Optimization failed for ${displaySrc}, falling back to original.`);
-            setIsUsingFallback(true);
-        } else {
-            // If original also fails (or we were already using it), show error
-            setHasError(true);
-            setImgLoading(false);
-        }
+        setHasError(true);
     };
-
-    const handleLoad = () => {
-        setImgLoading(false);
-    };
-
-    // Reset fallback if incoming src prop changes drastically
-    useEffect(() => {
-        setIsUsingFallback(false);
-    }, [src]);
 
     if (hasError) {
         return (
@@ -143,31 +114,22 @@ const SmartImage: React.FC<SmartImageProps> = ({
 
     return (
         <div style={{ position: 'relative', width, height, ...style }} className={className}>
-            {imgLoading && (
-                <div style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                    zIndex: 2, background: '#f5f5f5',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    pointerEvents: 'none',
-                    transition: 'opacity 0.3s'
-                }}>
-                    <Skeleton.Image active />
-                </div>
-            )}
-
             <Image
-                key={displaySrc} // Force re-render if src changes (important for fallback switch)
+                key={displaySrc}
                 src={displaySrc}
                 alt={alt || "Smart Image"}
                 width="100%"
                 height="100%"
-                style={{ objectFit: objectFitStyle, display: 'block', opacity: imgLoading ? 0 : 1, transition: 'opacity 0.3s ease-in' }}
+                style={{
+                    objectFit: objectFitStyle,
+                    display: 'block',
+                    transition: 'opacity 0.3s ease-in'
+                }}
                 onError={handleError}
-                onLoad={handleLoad}
                 fallback={fallback}
                 preview={
                     preview ? (typeof preview === 'object' ? preview : {
-                        src: src // Preview should always try to use Original High-Res
+                        src: src // Preview should always use Original High-Res
                     }) : false
                 }
                 placeholder={null}
