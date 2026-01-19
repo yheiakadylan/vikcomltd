@@ -102,11 +102,33 @@
         showNotification('info', 'Mở chi tiết đơn hàng...');
         await clickOrderLink();
 
-        // Step 5: Upload artwork file (includes opening upload dialog)
-        showNotification('info', 'Đang upload artwork...');
-        await uploadArtworkFile(fulfillmentData.designFiles[0]);
+        // Step 5: Check if order has multiple products
+        const products = document.querySelectorAll('.OrderItem.unfulfilled');
+        console.log(`[Merchize] Found ${products.length} unfulfilled products`);
 
-        // Step 6: Apply artwork
+        let selectedProduct = null;
+
+        if (products.length === 0) {
+            throw new Error('Không tìm thấy product nào trong order');
+        } else if (products.length === 1) {
+            // Only 1 product -> Auto select
+            console.log('[Merchize] Only 1 product, auto-selecting...');
+            selectedProduct = products[0];
+        } else {
+            // Multiple products -> Show selector
+            showNotification('info', `Tìm thấy ${products.length} products. Vui lòng chọn product...`);
+            selectedProduct = await showProductSelector(products);
+
+            if (!selectedProduct) {
+                throw new Error('Không có product nào được chọn');
+            }
+        }
+
+        // Step 6: Upload artwork file
+        showNotification('info', 'Đang upload artwork...');
+        await uploadArtworkFile(selectedProduct, fulfillmentData.designFiles[0]);
+
+        // Step 7: Apply artwork
         showNotification('info', 'Applying artwork...');
         await clickApplyArtwork();
 
@@ -239,6 +261,111 @@
     }
 
     /**
+     * Show product selector UI for multiple products
+     */
+    async function showProductSelector(products) {
+        return new Promise((resolve) => {
+            // Extract product info
+            const productInfos = Array.from(products).map((product, idx) => {
+                const title = product.querySelector('.TitleProduct')?.textContent || 'Unknown Product';
+                const variant = product.querySelector('.TextAttribute')?.textContent.replace('Variant: ', '') || '';
+                const sku = Array.from(product.querySelectorAll('.TextAttribute'))
+                    .find(el => el.textContent.includes('SKU:'))?.textContent.replace('SKU: ', '') || '';
+                const price = Array.from(product.querySelectorAll('.TextAttribute'))
+                    .find(el => el.textContent.includes('Price:'))?.textContent.replace('Price: ', '') || '';
+
+                return { index: idx, title, variant, sku, price, element: product };
+            });
+
+            // Create modal
+            const modal = document.createElement('div');
+            modal.id = 'pod-product-selector';
+            modal.innerHTML = `
+                <div style="
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    width: 420px;
+                    max-height: 80vh;
+                    overflow-y: auto;
+                    background: white;
+                    border-radius: 12px;
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                    z-index: 1000001;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                ">
+                    <div style="padding: 20px; border-bottom: 1px solid #eee;">
+                        <h3 style="margin: 0; font-size: 18px; color: #333;">📦 Select Product to Upload</h3>
+                        <p style="margin: 8px 0 0; font-size: 14px; color: #666;">Choose which product to upload artwork</p>
+                    </div>
+                    <div id="pod-product-list" style="padding: 12px;">
+                        ${productInfos.map(info => `
+                            <div class="pod-product-item" data-index="${info.index}" style="
+                                padding: 16px;
+                                margin-bottom: 12px;
+                                border: 2px solid #e0e0e0;
+                                border-radius: 8px;
+                                cursor: pointer;
+                                transition: all 0.2s;
+                            ">
+                                <div style="font-weight: 600; color: #333; margin-bottom: 8px; font-size: 14px;">
+                                    Product ${info.index + 1}
+                                </div>
+                                <div style="font-size: 13px; color: #666; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                    📝 ${info.variant}
+                                </div>
+                                <div style="font-size: 12px; color: #999;">
+                                    💰 ${info.price}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div style="padding: 16px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 8px;">
+                        <button id="pod-cancel-select" style="
+                            padding: 8px 16px;
+                            border: 1px solid #ddd;
+                            background: white;
+                            color: #666;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 14px;
+                        ">Cancel</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            // Add hover effects
+            document.querySelectorAll('.pod-product-item').forEach((item) => {
+                item.addEventListener('mouseenter', () => {
+                    item.style.borderColor = '#667eea';
+                    item.style.background = '#f8f9ff';
+                });
+                item.addEventListener('mouseleave', () => {
+                    item.style.borderColor = '#e0e0e0';
+                    item.style.background = 'white';
+                });
+            });
+
+            // Handle click
+            document.querySelectorAll('.pod-product-item').forEach((item, idx) => {
+                item.addEventListener('click', () => {
+                    modal.remove();
+                    console.log(`[Merchize] User selected product ${idx + 1}`);
+                    resolve(productInfos[idx].element);
+                });
+            });
+
+            document.getElementById('pod-cancel-select').addEventListener('click', () => {
+                modal.remove();
+                console.log('[Merchize] User cancelled product selection');
+                resolve(null);
+            });
+        });
+    }
+
+    /**
      * Click upload artwork button/label
      */
     async function clickUploadArtworkButton() {
@@ -264,12 +391,12 @@
     }
 
     /**
-     * Upload artwork file
+     * Upload artwork file to specific product
      */
-    async function uploadArtworkFile(designFile) {
-        // Step 1: Wait for upload trigger to render, then click
-        console.log('[Merchize] Waiting for upload trigger to render...');
-        const uploadTrigger = await waitForElement('.PFBoxUploader label.TriggerModal div.Text', 5000);
+    async function uploadArtworkFile(productElement, designFile) {
+        // Step 1: Find upload trigger in selected product
+        console.log('[Merchize] Finding upload trigger in selected product...');
+        const uploadTrigger = productElement.querySelector('.PFBoxUploader label.TriggerModal div.Text');
 
         if (!uploadTrigger) {
             throw new Error('Không tìm thấy upload trigger div sau 5 giây');
