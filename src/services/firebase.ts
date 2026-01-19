@@ -297,7 +297,11 @@ export const claimOrder = async (orderId: string, userId: string, collectionName
 export const uploadFileToStorage = async (file: File, path: string) => {
     const storageRef = ref(storage, path);
     await uploadBytes(storageRef, file);
-    return await getDownloadURL(storageRef);
+    const downloadURL = await getDownloadURL(storageRef);
+
+    // Convert to public URL (remove token to make it permanent)
+    const { getPublicStorageUrl } = await import('../utils/storage');
+    return getPublicStorageUrl(downloadURL);
 };
 // ...
 

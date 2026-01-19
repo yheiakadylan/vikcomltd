@@ -3,6 +3,7 @@ import { storage } from '../services/firebase';
 
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import type { UploadTask } from 'firebase/storage';
+import { getPublicStorageUrl } from '../utils/storage';
 
 // --- Configuration ---
 const MAX_CONCURRENT_UPLOADS = 5; // Limit parallel uploads to avoid 429
@@ -87,12 +88,14 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             },
                             async () => {
                                 const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                                updateItem(nextItem.id, { status: 'success', progress: 100, resultUrl: downloadURL });
+                                // Convert to public URL (remove token to make it permanent)
+                                const publicURL = getPublicStorageUrl(downloadURL);
+                                updateItem(nextItem.id, { status: 'success', progress: 100, resultUrl: publicURL });
                                 setActiveCount(prev => prev - 1);
 
                                 // Callback via metadata if needed
                                 if (nextItem.metadata?.onSuccess) {
-                                    nextItem.metadata.onSuccess(downloadURL);
+                                    nextItem.metadata.onSuccess(publicURL);
                                 }
                             }
                         );
