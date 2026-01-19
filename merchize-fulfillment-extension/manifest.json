@@ -1,0 +1,80 @@
+{
+    "manifest_version": 3,
+    "name": "POD Workflow - Merchize Fulfillment",
+    "version": "1.0.1",
+    "description": "Tự động hóa fulfill đơn hàng từ POD Workflow sang Merchize",
+    "permissions": [
+        "storage",
+        "tabs",
+        "scripting",
+        "activeTab",
+        "notifications",
+        "alarms"
+    ],
+    "host_permissions": [
+        "https://seller.merchize.com/*",
+        "https://*.firebasestorage.googleapis.com/*"
+    ],
+    "background": {
+        "service_worker": "background/background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://seller.merchize.com/*"
+            ],
+            "js": [
+                "content/merchize.js"
+            ],
+            "run_at": "document_idle"
+        },
+        {
+            "matches": [
+                "http://localhost:*/*",
+                "https://localhost:*/*",
+                "http://127.0.0.1:*/*",
+                "https://127.0.0.1:*/*",
+                "https://*.vercel.app/*",
+                "https://*.netlify.app/*"
+            ],
+            "js": [
+                "content/pod-bridge.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "action": {
+        "default_popup": "popup/popup.html",
+        "default_icon": {
+            "16": "assets/icon-16.png",
+            "48": "assets/icon-48.png",
+            "128": "assets/icon-128.png"
+        }
+    },
+    "icons": {
+        "16": "assets/icon-16.png",
+        "48": "assets/icon-48.png",
+        "128": "assets/icon-128.png"
+    },
+    "externally_connectable": {
+        "matches": [
+            "http://localhost:*/*",
+            "https://localhost:*/*",
+            "http://127.0.0.1:*/*",
+            "https://127.0.0.1:*/*",
+            "https://*.vercel.app/*",
+            "https://*.netlify.app/*",
+            "https://your-production-domain.com/*"
+        ]
+    },
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "assets/*"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ]
+}

@@ -35,6 +35,7 @@ import SmartImage from '../common/SmartImage';
 const { TextArea } = Input;
 const { Dragger } = Upload;
 const RejectModal = React.lazy(() => import('./RejectModal'));
+const FulfillModal = React.lazy(() => import('./FulfillModal'));
 
 interface TaskDetailModalProps {
     open: boolean;
@@ -63,6 +64,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
 
     // Reject/Fix State
     const [rejectModalOpen, setRejectModalOpen] = useState(false);
+
+    // Fulfill Modal State
+    const [isFulfillModalOpen, setIsFulfillModalOpen] = useState(false);
 
     // Urgent State
     const [isUrgent, setIsUrgent] = useState(false);
@@ -219,12 +223,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                 details: 'Approved design'
             }, order.collectionName);
 
-            // Trigger cleanup (Fire and forget)
-            fetch('/api/cleanup-storage', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ orderId: order.id })
-            }).catch(e => console.error("Cleanup trigger failed", e));
+            // NOTE: Files are kept when status=done. Only deleted when the entire order is deleted.
 
             message.success('Approved');
             onUpdate();
@@ -338,6 +337,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
         } catch (e) { message.error('Failed to send'); }
         finally { setCommentUploading(false); }
     };
+
+
 
 
     const handleDownload = async (e: React.MouseEvent, url: string, filename: string) => {
@@ -697,6 +698,23 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                             </Button>
                                                         </>
                                                     )}
+
+                                                    {/* Fulfill Button - Open Modal */}
+                                                    {isCS && order?.status === 'done' && order.designFiles && order.designFiles.length > 0 && (
+                                                        <Button
+                                                            type="primary"
+                                                            onClick={() => setIsFulfillModalOpen(true)}
+                                                            style={{
+                                                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                                                borderColor: '#667eea',
+                                                                fontWeight: 600,
+                                                                boxShadow: '0 4px 14px rgba(102, 126, 234, 0.4)'
+                                                            }}
+                                                            icon={<SendOutlined />}
+                                                        >
+                                                            Fulfill to Merchize
+                                                        </Button>
+                                                    )}
                                                     {canDSWork && (
                                                         <Button
                                                             type="primary"
@@ -951,6 +969,17 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                     setRejectModalOpen(false);
                     onCancel(); // Close main modal or just refresh? Usually close or refresh.
                     onUpdate(); // Refresh logs/status
+                }}
+            />
+
+            {/* Fulfill Modal - Select design files and confirm order ID */}
+            <FulfillModal
+                open={isFulfillModalOpen}
+                order={order}
+                onCancel={() => setIsFulfillModalOpen(false)}
+                onSuccess={() => {
+                    setIsFulfillModalOpen(false);
+                    fetchLogs(); // Refresh logs to show fulfill action
                 }}
             />
         </Modal >

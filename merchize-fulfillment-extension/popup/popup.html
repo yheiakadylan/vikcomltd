@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POD Fulfillment</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <img src="../assets/icon-48.png" alt="POD Logo">
+            <h1>POD Merchize Fulfillment</h1>
+        </header>
+
+        <div class="status-section">
+            <h2>Trạng thái</h2>
+            <div id="status-info">
+                <p class="status-item">
+                    <span class="label">Extension:</span>
+                    <span class="value active">✓ Đang hoạt động</span>
+                </p>
+                <p class="status-item">
+                    <span class="label">Fulfillments hôm nay:</span>
+                    <span class="value" id="today-count">0</span>
+                </p>
+            </div>
+        </div>
+
+        <div class="pending-section">
+            <h2>Đơn hàng đang xử lý</h2>
+            <div id="pending-list">
+                <p class="empty-state">Không có đơn hàng nào đang xử lý</p>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <h2>Cài đặt</h2>
+            <div class="setting-item">
+                <label>
+                    <input type="checkbox" id="auto-close-tab" checked>
+                    Tự động đóng tab sau khi fulfill thành công
+                </label>
+            </div>
+            <div class="setting-item">
+                <label>
+                    <input type="checkbox" id="show-notifications" checked>
+                    Hiển thị thông báo
+                </label>
+            </div>
+        </div>
+
+        <footer>
+            <button id="clear-data" class="btn-secondary">Xóa dữ liệu</button>
+            <button id="view-guide" class="btn-primary">Hướng dẫn</button>
+        </footer>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>

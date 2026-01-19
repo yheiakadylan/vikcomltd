@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
+import ExtensionDownload from './pages/ExtensionDownload';
 
 import NotFound from './pages/NotFound';
 import { Spin, App as AntdApp } from 'antd';
@@ -80,6 +81,13 @@ const AppRoutes = () => {
         <Route path="/admin" element={
           <ProtectedRoute allowedRoles={['ADMIN', 'CS']}>
             <Admin />
+          </ProtectedRoute>
+        } />
+
+        {/* Extension Download - Available for all authenticated users */}
+        <Route path="/extension" element={
+          <ProtectedRoute allowedRoles={['ADMIN', 'CS', 'DS', 'IDEA']}>
+            <ExtensionDownload />
           </ProtectedRoute>
         } />
 
