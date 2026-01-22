@@ -31,29 +31,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     useEffect(() => {
         let unsubscribeSnapshot: (() => void) | undefined;
 
-        const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+        const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
             setUser(firebaseUser);
             if (firebaseUser) {
-                // Real-time listener for user profile
-                unsubscribeSnapshot = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap: any) => {
-                    if (docSnap.exists()) {
-                        setAppUser({ ...docSnap.data(), uid: firebaseUser.uid } as AppUser);
-                    } else {
-                        console.error('User document not found in Firestore');
-                        // Fallback
-                        setAppUser({
-                            uid: firebaseUser.uid,
-                            email: firebaseUser.email || '',
-                            displayName: firebaseUser.displayName || 'Demo User',
-                            role: 'CS',
-                            avatar: firebaseUser.photoURL || undefined
-                        });
-                    }
+                try {
+                    // 1. Get Claims (Instant Role)
+                    // Force refresh to ensure we get latest claims (e.g. after role update)
+                    const tokenResult = await firebaseUser.getIdTokenResult(true);
+                    const claims = tokenResult.claims;
+
+                    // 2. Setup Realtime Listener for critical status (Ban/Active)
+                    // We still listen to DB, but we can render faster if we assume claims are fresh enough?
+                    // Actually, for "Pro" feel, we want instant access. 
+                    // But if we return 'loading=false' before DB returns, 'appUser.isActive' might be undefined?
+
+                    unsubscribeSnapshot = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap: any) => {
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            setAppUser({
+                                uid: firebaseUser.uid,
+                                email: firebaseUser.email || '',
+                                displayName: firebaseUser.displayName || data.displayName || 'User',
+                                photoURL: firebaseUser.photoURL,
+                                ...data,
+                                // Role priority: Claim > DB (Security) or DB > Claim (Realtime)?
+                                // Usually Claim is source of truth for backend. DB is source for UI.
+                                // Let's trust DB for UI to reflect changes immediately without re-login.
+                                // BUT Custom Claims is requested.
+                                role: (claims.role as any) || data.role || 'CS'
+                            } as AppUser);
+                        } else {
+                            // Fallback if DB missing
+                            setAppUser({
+                                uid: firebaseUser.uid,
+                                email: firebaseUser.email || '',
+                                displayName: firebaseUser.displayName || 'User',
+                                role: (claims.role as any) || 'CS',
+                                isActive: true
+                            });
+                        }
+                        setLoading(false);
+                    }, (error: any) => {
+                        console.warn("Profile sync error:", error);
+                        setLoading(false);
+                    });
+
+                } catch (e) {
+                    console.error("Auth Token Error", e);
                     setLoading(false);
-                }, (error: any) => {
-                    console.error("Error fetching user profile:", error);
-                    setLoading(false);
-                });
+                }
             } else {
                 if (unsubscribeSnapshot) unsubscribeSnapshot();
                 setAppUser(null);

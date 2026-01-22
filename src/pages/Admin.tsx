@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Tabs, Table, Button, Modal, Form, Input, Select, Tag, App, Avatar } from 'antd';
-import { PlusOutlined, UserOutlined } from '@ant-design/icons';
-import { getUsers, createSecondaryUser, createUserProfile } from '../services/firebase';
+import { Layout, Tabs, Table, Button, Modal, Form, Input, Select, Tag, App, Avatar, Popconfirm, Tooltip } from 'antd';
+import { PlusOutlined, UserOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { getUsers, apiCreateUser, apiUpdateUser, apiDeleteUser } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import AppHeader from '../components/layout/AppHeader';
 import type { User } from '../types';
@@ -14,6 +14,7 @@ const Admin: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState<User | null>(null);
     const [form] = Form.useForm();
 
     useEffect(() => {
@@ -21,6 +22,23 @@ const Admin: React.FC = () => {
             fetchUsers();
         }
     }, [user]);
+
+    // Reset/Fill form when modal opens or editingUser changes
+    useEffect(() => {
+        if (isModalOpen) {
+            if (editingUser) {
+                form.setFieldsValue({
+                    email: editingUser.email,
+                    displayName: editingUser.displayName,
+                    role: editingUser.role,
+                    password: '', // Reset password field
+                    confirmPassword: ''
+                });
+            } else {
+                form.resetFields();
+            }
+        }
+    }, [isModalOpen, editingUser, form]);
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -35,41 +53,70 @@ const Admin: React.FC = () => {
         }
     };
 
-    const handleCreateUser = async (values: any) => {
+    const handleUserSubmit = async (values: any) => {
+        setLoading(true);
         try {
-            setLoading(true);
+            if (editingUser) {
+                // UPDATE MODE (Server Side)
+                if (!editingUser.uid) throw new Error("Missing User UID");
 
-            // 1. Create user in Firebase Auth (secondary app)
-            const newUid = await createSecondaryUser(values.email, values.password);
+                await apiUpdateUser(editingUser.uid, {
+                    displayName: values.displayName,
+                    role: values.role,
+                    email: values.email,
+                    // Only send password if user entered it
+                    ...(values.password ? { password: values.password } : {})
+                });
 
-            // 2. Create user profile in Firestore
-            await createUserProfile({
-                uid: newUid,
-                email: values.email,
-                displayName: values.displayName,
-                role: values.role,
-                isActive: true
-            });
+                message.success('Cập nhật thông tin thành công!');
+            } else {
+                // CREATE MODE (Server Side)
+                // Note: apiCreateUser handles both Auth and Firestore
+                await apiCreateUser({
+                    email: values.email,
+                    password: values.password,
+                    displayName: values.displayName,
+                    role: values.role
+                });
 
-            console.log('User created:', newUid);
-            message.success('Tạo nhân viên thành công! Nhân viên có thể đăng nhập ngay.');
+                message.success('Tạo nhân viên thành công! Nhân viên có thể đăng nhập ngay.');
+            }
+
             setIsModalOpen(false);
+            setEditingUser(null);
             form.resetFields();
             fetchUsers();
         } catch (error: any) {
             console.error(error);
-            let errorMessage = 'Lỗi khi tạo nhân viên';
-            if (error.code === 'auth/email-already-in-use') {
-                errorMessage = 'Email này đã được sử dụng!';
-            } else if (error.code === 'auth/weak-password') {
-                errorMessage = 'Mật khẩu quá yếu!';
-            } else {
-                errorMessage = error.message || errorMessage;
-            }
-            message.error(errorMessage);
+            message.error(error.message || 'Thao tác thất bại');
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleDeleteUser = async (record: User) => {
+        if (!record.uid) return;
+        setLoading(true);
+        try {
+            await apiDeleteUser(record.uid);
+            message.success(`Đã xóa tài khoản ${record.displayName}`);
+            fetchUsers();
+        } catch (error: any) {
+            console.error(error);
+            message.error(error.message || 'Không thể xóa tài khoản');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const openEditModal = (record: User) => {
+        setEditingUser(record);
+        setIsModalOpen(true);
+    };
+
+    const openCreateModal = () => {
+        setEditingUser(null);
+        setIsModalOpen(true);
     };
 
     const columns = [
@@ -100,11 +147,35 @@ const Admin: React.FC = () => {
             }
         },
         {
-            title: 'Trạng thái',
-            dataIndex: 'isActive',
-            key: 'isActive',
-            render: (active: boolean) => (
-                active ? <Tag color="success">Active</Tag> : <Tag color="default">Locked</Tag>
+            title: 'Hành động',
+            key: 'action',
+            render: (_: any, record: User) => (
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <Tooltip title="Chỉnh sửa / Đổi mật khẩu">
+                        <Button
+                            icon={<EditOutlined />}
+                            size="small"
+                            onClick={() => openEditModal(record)}
+                        />
+                    </Tooltip>
+
+                    <Popconfirm
+                        title="Xóa tài khoản này?"
+                        description="Hành động này sẽ xóa hoàn toàn tài khoản khỏi hệ thống (Auth & Data). Không thể hoàn tác."
+                        onConfirm={() => handleDeleteUser(record)}
+                        okText="Xóa vĩnh viễn"
+                        cancelText="Hủy"
+                        okButtonProps={{ danger: true }}
+                    >
+                        <Tooltip title="Xóa tài khoản">
+                            <Button
+                                icon={<DeleteOutlined />}
+                                size="small"
+                                danger
+                            />
+                        </Tooltip>
+                    </Popconfirm>
+                </div>
             )
         }
     ];
@@ -112,7 +183,7 @@ const Admin: React.FC = () => {
     const UserManagementTab = () => (
         <div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)}>
+                <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
                     Thêm Nhân Viên
                 </Button>
             </div>
@@ -138,34 +209,37 @@ const Admin: React.FC = () => {
             </Content>
 
             <Modal
-                title="Thêm nhân viên mới"
+                title={editingUser ? "Cập nhật tài khoản" : "Thêm nhân viên mới"}
                 open={isModalOpen}
-                onCancel={() => setIsModalOpen(false)}
+                onCancel={() => { setIsModalOpen(false); setEditingUser(null); }}
                 footer={null}
             >
-                <Form form={form} layout="vertical" onFinish={handleCreateUser}>
+                <Form form={form} layout="vertical" onFinish={handleUserSubmit}>
                     <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
                         <Input placeholder="example@pinkpod.com" />
                     </Form.Item>
+
                     <Form.Item name="displayName" label="Tên hiển thị" rules={[{ required: true }]}>
                         <Input placeholder="Nguyễn Văn A" />
                     </Form.Item>
+
                     <Form.Item
                         name="password"
-                        label="Mật khẩu"
+                        label={editingUser ? "Mật khẩu mới (Để trống nếu không đổi)" : "Mật khẩu"}
                         rules={[
-                            { required: true, message: 'Vui lòng nhập mật khẩu' },
+                            { required: !editingUser, message: 'Vui lòng nhập mật khẩu' },
                             { min: 6, message: 'Mật khẩu ít nhất 6 ký tự' }
                         ]}
                     >
-                        <Input.Password placeholder="Nhập mật khẩu cho nhân viên" />
+                        <Input.Password placeholder={editingUser ? "............" : "Nhập mật khẩu"} />
                     </Form.Item>
+
                     <Form.Item
                         name="confirmPassword"
                         label="Xác nhận mật khẩu"
                         dependencies={['password']}
                         rules={[
-                            { required: true, message: 'Vui lòng xác nhận mật khẩu' },
+                            { required: !editingUser, message: 'Vui lòng xác nhận mật khẩu' },
                             ({ getFieldValue }) => ({
                                 validator(_, value) {
                                     if (!value || getFieldValue('password') === value) {
@@ -178,6 +252,7 @@ const Admin: React.FC = () => {
                     >
                         <Input.Password placeholder="Nhập lại mật khẩu" />
                     </Form.Item>
+
                     <Form.Item name="role" label="Vai trò" rules={[{ required: true }]}>
                         <Select>
                             <Select.Option value="CS">CS (Customer Service)</Select.Option>
@@ -186,9 +261,12 @@ const Admin: React.FC = () => {
                             <Select.Option value="ADMIN">Admin</Select.Option>
                         </Select>
                     </Form.Item>
+
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-                        <Button onClick={() => setIsModalOpen(false)}>Hủy</Button>
-                        <Button type="primary" htmlType="submit">Tạo mới</Button>
+                        <Button onClick={() => { setIsModalOpen(false); setEditingUser(null); }}>Hủy</Button>
+                        <Button type="primary" htmlType="submit">
+                            {editingUser ? 'Cập nhật' : 'Tạo mới'}
+                        </Button>
                     </div>
                 </Form>
             </Modal>

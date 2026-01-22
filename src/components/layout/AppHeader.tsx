@@ -1,13 +1,87 @@
 import React, { useState } from 'react';
-import { Layout, Button, Avatar, Dropdown } from 'antd';
-import { PlusOutlined, UserOutlined, SettingOutlined, LogoutOutlined, SafetyCertificateOutlined, HomeOutlined } from '@ant-design/icons';
+import { Layout, Button, Avatar, Dropdown, Badge, List, Typography, Empty } from 'antd';
+import { PlusOutlined, UserOutlined, SettingOutlined, LogoutOutlined, SafetyCertificateOutlined, HomeOutlined, BellOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useNotification } from '../../contexts/NotificationContext';
 import LanguageSwitcher from '../common/LanguageSwitcher';
 import UserProfileModal from '../modals/UserProfileModal';
 
 const { Header } = Layout;
+const { Text } = Typography;
+
+const NotificationBell = () => {
+    const { notifications, unreadCount } = useNotification();
+    const navigate = useNavigate();
+
+    const menuItems = [
+        {
+            key: 'header',
+            label: (
+                <div style={{ padding: '8px 16px', borderBottom: '1px solid #f0f0f0', fontWeight: 'bold' }}>
+                    Thông báo ({unreadCount})
+                </div>
+            ),
+        },
+        {
+            key: 'list',
+            label: (
+                <div style={{ maxHeight: '400px', overflowY: 'auto', width: 300 }}>
+                    {notifications.length === 0 ? (
+                        <Empty description="Không có thông báo mới" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    ) : (
+                        <List
+                            rowKey="id"
+                            itemLayout="horizontal"
+                            dataSource={notifications}
+                            renderItem={(item) => (
+                                <List.Item
+                                    style={{
+                                        padding: '12px 16px',
+                                        cursor: 'pointer',
+                                        background: '#fff',
+                                        transition: 'background 0.2s'
+                                    }}
+                                    className="notification-item"
+                                    onClick={() => {
+                                        // Navigate logic
+                                        const route = item.type === 'idea' ? '/board/idea' : '/board/fulfill';
+                                        navigate(`${route}?taskId=${item.id}`);
+                                    }}
+                                >
+                                    <List.Item.Meta
+                                        title={<Text style={{ fontSize: 13, fontWeight: 600 }}>{item.title}</Text>}
+                                        description={
+                                            <div style={{ fontSize: 12 }}>
+                                                <div>{item.message}</div>
+                                                <div style={{ color: '#aaa', marginTop: 4, fontSize: 10 }}>
+                                                    {item.timestamp?.seconds ? new Date(item.timestamp.seconds * 1000).toLocaleString('vi-VN') : 'Vừa xong'}
+                                                </div>
+                                            </div>
+                                        }
+                                    />
+                                </List.Item>
+                            )}
+                        />
+                    )}
+                </div>
+            ),
+        }
+    ];
+
+    return (
+        <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight" overlayStyle={{ minWidth: 300 }}>
+            <Badge count={unreadCount} size="small" offset={[-5, 5]}>
+                <Button
+                    type="text"
+                    icon={<BellOutlined style={{ fontSize: 20, color: '#595959' }} />}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                />
+            </Badge>
+        </Dropdown>
+    );
+};
 
 interface AppHeaderProps {
     onNewTask?: () => void;
@@ -113,6 +187,8 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onNewTask }) => {
 
                 {/* Right Side: Action Buttons + User Menu */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+                    <NotificationBell />
+
                     {onNewTask && (
                         <Button
                             type="primary"

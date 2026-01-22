@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Tabs, Empty, Spin, App, Pagination } from 'antd';
 import { AppstoreOutlined, BarsOutlined } from '@ant-design/icons';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { usePersistedState } from '../hooks/usePersistedState'; // Import hook
+import { useOrders } from '../contexts/OrdersContext'; // Import Context
+import { usePersistedState } from '../hooks/usePersistedState';
 import type { Order, OrderStatus } from '../types';
 import { deleteOrder } from '../services/firebase';
 import { generateStoragePath } from '../utils/order';
 import { sortOrders } from '../utils/sortOrders';
+
 // Lazy load modals for performance
 const NewTaskModal = React.lazy(() => import('../components/modals/NewTaskModal'));
 const TaskDetailModal = React.lazy(() => import('../components/modals/TaskDetailModal'));
@@ -18,19 +21,15 @@ import AppHeader from '../components/layout/AppHeader';
 import SearchInput from '../components/common/SearchInput';
 import OrderCard from '../components/dashboard/OrderCard';
 import OrderRow from '../components/dashboard/OrderRow';
-// Remove dayjs as it is likely not used directly in this file anymore, or keep if needed.
-// Checked usage: not used directly except in imports potentially? Wait, let's keep it safe or remove if unused.
-// It WAS used in renderOrderCard. Now those are gone.
-// Let's remove dayjs import from here.
 
 const { Content } = Layout;
 
 const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }) => {
     const collectionName = mode === 'idea' ? 'ideas' : 'tasks';
-    // Remove accentColor variable usage, rely on CSS variables
     const { message } = App.useApp();
     const { appUser: user } = useAuth();
     const { t } = useLanguage();
+    const { registerView, views } = useOrders(); // Use Context
     const { status } = useParams<{ status: string }>();
     const navigate = useNavigate();
 
@@ -46,44 +45,55 @@ const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }
         };
     }, [mode]);
 
-    // Validate status or default to 'new'
-    const validStatuses: OrderStatus[] = ['new', 'doing', 'check', 'in_review', 'need_fix', 'done'];
-    // const activeTab: OrderStatus = (status && validStatuses.includes(status as OrderStatus)) ? (status as OrderStatus) : 'new'; // Original line
-    const [activeTab, setActiveTab] = usePersistedState<string>(`activeTab_${mode}`, 'new'); // Persisted per board
+    // url params...
+    const [searchParams, setSearchParams] = useSearchParams();
+    const activePage = parseInt(searchParams.get('page') || '1', 10);
+    const activePageSize = parseInt(searchParams.get('pageSize') || '25', 10);
+    const activeSearch = searchParams.get('q') || '';
+    const activeTaskId = searchParams.get('taskId');
 
-    // Sync URL status to activeTab
+    // DEEP LINKING: Check for 'taskId' in URL
+    useEffect(() => {
+        if (activeTaskId) {
+            import('../services/firebase').then(async ({ db }) => {
+                try {
+                    const docRef = doc(db, collectionName, activeTaskId);
+                    const snap = await getDoc(docRef);
+                    if (snap.exists()) {
+                        const orderData = { id: snap.id, ...snap.data(), collectionName } as Order;
+                        setSelectedOrder(orderData);
+                        setIsDetailModalOpen(true);
+                    } else {
+                        // Handle 404 Case?
+                        console.warn("Deep linked task not found");
+                    }
+                } catch (e) {
+                    console.error("Deep link fetch failed", e);
+                }
+            });
+        } else {
+            // Close modal if URL param is missing (e.g. Back button)
+            setIsDetailModalOpen(false);
+            setSelectedOrder(null);
+        }
+    }, [activeTaskId, collectionName]);
+
+    const validStatuses: OrderStatus[] = ['new', 'doing', 'check', 'in_review', 'need_fix', 'done'];
+    const [activeTab, setActiveTab] = usePersistedState<string>(`activeTab_${mode}`, 'new');
+
     useEffect(() => {
         if (status && validStatuses.includes(status as OrderStatus)) {
             setActiveTab(status);
         }
     }, [status, setActiveTab]);
 
-    // Pagination State
-    const [page, setPage] = useState(1);
-    const [pageSize, setPageSize] = useState(25);
     const [total, setTotal] = useState(0);
-    const pageCursors = React.useRef<Map<number, any>>(new Map());
 
-    const [searchText, setSearchText] = useState('');
-    const [executedSearchTerm, setExecutedSearchTerm] = useState('');
+    // Cursors for Pagination
+    const pageCursors = React.useRef<Map<number, any>>(new Map());
     const isAutoSwitchingTab = React.useRef(false);
 
-    // State Separation
-    const [tabOrders, setTabOrders] = useState<Order[]>([]);
-    const [searchOrders, setSearchOrders] = useState<Order[] | null>(null);
-    const [loading, setLoading] = useState(true);
-
-    // Derived Orders for Display
-    const orders = React.useMemo(() => {
-        return executedSearchTerm ? (searchOrders || []) : tabOrders;
-    }, [executedSearchTerm, searchOrders, tabOrders]);
-
-    // View Mode State
-    // const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid'); // Original line
-    const [viewMode, setViewMode] = usePersistedState<'list' | 'grid'>(`viewMode_${mode}`, 'grid'); // Persisted per board
-
-
-    // Modal States
+    // Dialog States
     const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -92,67 +102,49 @@ const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }
 
     const isCS = user?.role === 'CS' || user?.role === 'ADMIN';
     const isIdea = user?.role === 'IDEA' || user?.role === 'ADMIN';
-    const isDS = user?.role === 'DS' || user?.role === 'ADMIN'; // DS or Admin acts as worker sometimes or just viewer
+    const isDS = user?.role === 'DS' || user?.role === 'ADMIN';
     const isAdmin = user?.role === 'ADMIN';
-
-    // Permission to Create Task
     const canCreate = mode === 'idea' ? isIdea : isCS;
 
+    const [viewMode, setViewMode] = usePersistedState<'list' | 'grid'>(`viewMode_${mode}`, 'grid');
 
-    // Reset Page on Tab change or Search change
+    // 1. Compute Cache Key
+    const viewKey = React.useMemo(() => {
+        if (activeSearch) return `${collectionName}_search_${activeSearch}_p${activePage}`;
+        // Unique key for each view configuration
+        const roleSuffix = user?.role === 'DS' && activeTab !== 'new' ? `_${user.uid}` : '';
+        return `${collectionName}_tab_${activeTab}_p${activePage}${roleSuffix}`;
+    }, [collectionName, activeSearch, activePage, activeTab, user]);
+
+    // 2. Get Data from Context
+    const viewState = views[viewKey] || { data: [], loading: true, lastDoc: null };
+    const orders = viewState.data;
+    const loading = viewState.loading && views[viewKey] === undefined; // Only load if not cached
+
+    // 3. Sync Cursors (Backwards compatibility for pagination)
     useEffect(() => {
-        setPage(1);
-        pageCursors.current.clear();
-
-        if (isAutoSwitchingTab.current) {
-            // If switching automatically due to search, DON'T clear search
-            isAutoSwitchingTab.current = false;
-        } else {
-            // Manual tab click -> Clear search (only if tab changed, not search term)
-            // But this effect runs on executedSearchTerm too?
-            // We want:
-            // 1. Tab Change -> Clear Search
-            // 2. Search Change -> Reset Page (Handled in onChange/onSearch)
+        if (viewState.lastDoc) {
+            pageCursors.current.set(activePage, viewState.lastDoc);
         }
-    }, [activeTab]);
+    }, [viewState.lastDoc, activePage]);
 
-    // Separate Effect for Search Mode Switch to reset cursors
-    useEffect(() => {
-        pageCursors.current.clear();
-        if (executedSearchTerm) {
-            setSearchOrders([]); // Clear previous search results visually
-        }
-    }, [executedSearchTerm]);
-
-    // 1. Data Loading (Paginated + Search)
+    // 4. Data Fetching Effect
     useEffect(() => {
         if (!user) return;
 
-        let isMounted = true; // Track mount state
-        setLoading(true);
-        let unsubscribe: (() => void) | undefined;
+        let isMounted = true;
         let constraints: any[] = [];
 
-        import('../services/firebase').then(({ where, getOrdersCount, subscribeToOrders }) => {
+        import('../services/firebase').then(({ where, getOrdersCount }) => {
             if (!isMounted) return;
 
-            const isSearchMode = !!executedSearchTerm.trim();
+            const isSearchMode = !!activeSearch.trim();
 
-            // SEARCH MODE
             if (isSearchMode) {
-                const term = executedSearchTerm.trim();
-                console.log("🔍 Server-side Search (ID only):", term);
-
-                // Clean '#' and whitespace
+                const term = activeSearch.trim();
                 const cleanId = term.replace(/^#/, '').trim();
-
-                // Search ONLY by readableId
                 constraints.push(where('readableId', '==', cleanId));
-            }
-            // TAB / FILTER MODE
-            else {
-                // Filtering Logic
-                // 1. Strict DS (Regular DS, not Admin acting as DS)
+            } else {
                 if (user.role === 'DS') {
                     if (activeTab === 'new') {
                         constraints.push(where('status', '==', 'new'));
@@ -160,115 +152,74 @@ const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }
                         constraints.push(where('designerId', '==', user.uid));
                         constraints.push(where('status', '==', activeTab));
                     }
-                    // DS Restriction: Cannot see check tab (handled by tabItems)
-                    // If they visit /check manually, they get no data due to designerId filter (unless they are assigned? No, Check has no assignee per se, but task keeps designerId)
-                    // If task is in 'check', DS shouldn't see it?
                     if (activeTab === 'check') {
-                        // Force empty
                         constraints.push(where('status', '==', 'impossible_status'));
                     }
-                }
-                // 2. Admin / CS / Idea
-                else {
-                    // Standard filtering
+                } else {
                     constraints.push(where('status', '==', activeTab));
-
-                    // APPROVAL LOGIC
-                    // For 'in_review', NON-ADMINS (CS, IDEA) must only see approved tasks.
-                    // This matches Firestore Rule: status == 'in_review' requires approvedByManager==true (or isMyTask).
-                    // We enforce approvedByManager==true here to satisfy the rule for the general list.
                     if (activeTab === 'in_review' && !isAdmin) {
-                        console.log("🔒 Securing View: Adding manager approval constraint");
                         constraints.push(where('approvedByManager', '==', true));
                     }
-
-                    // CHECK TAB LOGIC
-                    // Only Admin can see Check tab content
                     if (activeTab === 'check' && !isAdmin) {
-                        // This should theoretically be handled by the UI not showing the tab, 
-                        // but if they force the URL, we block it.
                         constraints.push(where('status', '==', 'impossible_status_block'));
                     }
                 }
             }
 
-            // 1. Get Total Count (Only on first page or tab/search change)
-            // We should fetch count if page is 1
-            if (page === 1) {
+            // Count logic
+            if (activePage === 1) {
+                // We re-count on first page load or tab switch
                 getOrdersCount(constraints, collectionName).then(count => {
                     if (!isMounted) return;
                     setTotal(count);
-                    // Handle No Match Alert here or in subscribe?
-                    // If count is 0 and we are searching, we know immediately.
                     if (isSearchMode && count === 0) {
-                        message.warning(t('dashboard.messages.noOrderFound') || 'Order not found / Không tìm thấy đơn hàng');
+                        // Optional: Warning
                     }
                 });
             }
 
-            // 2. Determine Cursor
-            const startAfterDoc = page > 1 ? pageCursors.current.get(page - 1) : null;
+            // Determine Cursor
+            const startAfterDoc = activePage > 1 ? pageCursors.current.get(activePage - 1) : null;
 
-            // 3. Subscribe
-            unsubscribe = subscribeToOrders((newOrders, lastDoc) => {
-                if (!isMounted) return;
+            // REGISTER VIEW (This triggers the subscription if needed)
+            registerView(viewKey, constraints, collectionName, activePageSize, startAfterDoc);
 
-                // Client-side Security Filter (Crucial for Search Mode)
-                // Filter out 'check' tasks for non-Admins
-                const safeOrders = newOrders.filter(o => {
-                    if (o.status === 'check' && !isAdmin) {
-                        return false;
-                    }
-                    return true;
-                });
-
-                // ROUTE DATA TO CORRECT STATE
-                if (isSearchMode) {
-                    setSearchOrders(safeOrders);
-                } else {
-                    setTabOrders(safeOrders);
-                    setSearchOrders(null); // Ensure search is null when in tab mode
-                }
-
-                if (lastDoc) {
-                    pageCursors.current.set(page, lastDoc);
-                }
-
-                // Auto-Switch Tab Logic
-                if (isSearchMode && safeOrders.length > 0) {
-                    const foundOrder = safeOrders[0]; // Assuming ID search returns 1 result
-                    // Check if order is in a different tab and valid status
-                    if (validStatuses.includes(foundOrder.status) && foundOrder.status !== activeTab) {
-                        console.log(`Auto - switching tab from ${activeTab} to ${foundOrder.status} `);
+            // Auto Switch Logic (If search returns result in different tab)
+            // Implementation note: Ideally this sits in the Context or a separate effect watching 'orders'.
+            // For now, we simplify and assume if we search, we stay put, or simple redirect if 'status' differs.
+            if (isSearchMode && orders.length > 0) {
+                const found = orders[0];
+                if (validStatuses.includes(found.status) && found.status !== activeTab) {
+                    if (!isAutoSwitchingTab.current) {
+                        console.log(`Auto - switching tab from ${activeTab} to ${found.status} `);
                         isAutoSwitchingTab.current = true;
-                        // Use correct board path
-                        navigate(`/board/${mode === 'idea' ? 'idea' : 'fulfill'}/${foundOrder.status}`);
+                        navigate(`/board/${mode === 'idea' ? 'idea' : 'fulfill'}/${found.status}?q=${activeSearch}`);
                     }
-                } else if (isSearchMode && newOrders.length > 0 && safeOrders.length === 0) {
-                    // Case: Found in DB but filtered out by Security
-                    message.warning(t('dashboard.messages.noPermission') || 'No permission to view this task');
                 }
+            }
 
-                setLoading(false);
-            }, (error) => {
-                if (!isMounted) return;
-                console.error("Error:", error);
-                setLoading(false);
-                if (error?.code === 'permission-denied') message.error(t('dashboard.messages.noPermission'));
-            }, constraints, pageSize, startAfterDoc, collectionName);
         });
 
         return () => {
-            isMounted = false; // Mark unmounted
-            if (unsubscribe) unsubscribe();
+            isMounted = false;
         };
-        // Dependency Trick: When searching, changes to activeTab should NOT trigger re-fetch.
-        // We use a conditional dependency: if executedSearchTerm is set, we pass a static string instead of activeTab.
-    }, [user, executedSearchTerm ? (mode === 'idea' ? 'search_idea' : 'search_task') : activeTab, isDS, page, pageSize, executedSearchTerm, collectionName, mode, isAdmin]);
+    }, [viewKey, user, registerView]); // Depend on viewKey to re-trigger
+
+
+
+    // Clear cursors on tab change
+    useEffect(() => {
+        // Reset cursors only if tab actually changes
+        if (!activeSearch) pageCursors.current.clear();
+    }, [activeTab]);
 
     const handlePageChange = (p: number, ps: number) => {
-        setPage(p);
-        setPageSize(ps);
+        setSearchParams(prev => {
+            const newParams = new URLSearchParams(prev);
+            newParams.set('page', p.toString());
+            newParams.set('pageSize', ps.toString());
+            return newParams;
+        });
     };
 
     // Use server-fetched data directly (already filtered)
@@ -277,7 +228,15 @@ const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }
     }, [orders]);
 
     // Actions
-    const handleOpenDetail = React.useCallback((order: Order) => { setSelectedOrder(order); setIsDetailModalOpen(true); }, []);
+    const handleOpenDetail = React.useCallback((order: Order) => {
+        setSelectedOrder(order);
+        setIsDetailModalOpen(true);
+        setSearchParams(prev => {
+            const p = new URLSearchParams(prev);
+            p.set('taskId', order.id);
+            return p;
+        });
+    }, [setSearchParams]);
 
     const handleOpenGiveBack = React.useCallback((e: React.MouseEvent, order: Order) => {
         e.stopPropagation();
@@ -412,18 +371,26 @@ const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }
                             style={{ flex: 1 }}
                             tabBarExtraContent={
                                 <SearchInput
-                                    value={searchText}
+                                    value={activeSearch}
                                     onChange={(val) => {
-                                        setSearchText(val);
-                                        // Auto-clear logic
+                                        // Auto-clear logic only
                                         if (!val) {
-                                            setExecutedSearchTerm('');
-                                            setPage(1);
+                                            setSearchParams(prev => {
+                                                const p = new URLSearchParams(prev);
+                                                p.delete('q');
+                                                p.set('page', '1');
+                                                return p;
+                                            });
                                         }
                                     }}
                                     onSearch={(val) => {
-                                        setExecutedSearchTerm(val);
-                                        setPage(1);
+                                        setSearchParams(prev => {
+                                            const p = new URLSearchParams(prev);
+                                            if (val) p.set('q', val);
+                                            else p.delete('q');
+                                            p.set('page', '1');
+                                            return p;
+                                        });
                                     }}
                                     style={{ width: 300 }}
                                     placeholder={t('dashboard.searchPlaceholder')}
@@ -443,9 +410,9 @@ const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }
                     }}>
                         <Pagination
                             className="cinematic-pagination"
-                            current={page}
+                            current={activePage}
                             total={total}
-                            pageSize={pageSize}
+                            pageSize={activePageSize}
                             onChange={handlePageChange}
                             showSizeChanger={false}
                             pageSizeOptions={['25']}
@@ -482,7 +449,20 @@ const Dashboard: React.FC<{ mode?: 'fulfill' | 'idea' }> = ({ mode = 'fulfill' }
                 {
                     selectedOrder && (
                         <>
-                            <TaskDetailModal order={selectedOrder} open={isDetailModalOpen} onCancel={() => { setIsDetailModalOpen(false); setSelectedOrder(null); }} onUpdate={() => { }} />
+                            <TaskDetailModal
+                                order={selectedOrder}
+                                open={isDetailModalOpen}
+                                onCancel={() => {
+                                    setIsDetailModalOpen(false);
+                                    setSelectedOrder(null);
+                                    setSearchParams(prev => {
+                                        const p = new URLSearchParams(prev);
+                                        p.delete('taskId');
+                                        return p;
+                                    });
+                                }}
+                                onUpdate={() => { }}
+                            />
                             <RejectModal order={selectedOrder} open={isRejectModalOpen} onCancel={() => { setIsRejectModalOpen(false); setSelectedOrder(null); }} onSuccess={() => { }} />
                             <GiveBackModal order={selectedOrder} open={isGiveBackModalOpen} onCancel={() => { setIsGiveBackModalOpen(false); setSelectedOrder(null); }} onSuccess={() => { }} />
                         </>

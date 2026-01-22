@@ -120,6 +120,17 @@ export const createUserProfile = async (user: User) => {
     }
 };
 
+export const updateUserProfile = async (uid: string, data: Partial<User>) => {
+    try {
+        const docRef = doc(db, 'users', uid);
+        await updateDoc(docRef, data);
+        console.log("Update Profile Success");
+    } catch (e) {
+        console.error("Update Profile Failed:", e);
+        throw e;
+    }
+};
+
 export const getOrdersCount = async (constraints: any[] = [], collectionName: string = 'tasks'): Promise<number> => {
     const coll = collection(db, collectionName);
     const q = query(coll, ...constraints);
@@ -170,6 +181,56 @@ export const subscribeToOrders = (
     });
 
     return unsubscribe;
+};
+
+// --- Server-side Admin APIs (via Vercel Functions) ---
+
+const API_URL = '/api/users';
+
+const getAuthHeaders = async () => {
+    const token = await auth.currentUser?.getIdToken();
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+    };
+};
+
+export const apiCreateUser = async (user: Partial<User> & { password?: string }) => {
+    const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(user)
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Create failed');
+    }
+    return res.json();
+};
+
+export const apiUpdateUser = async (uid: string, data: Partial<User> & { password?: string }) => {
+    const res = await fetch(API_URL, {
+        method: 'PUT',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ uid, ...data })
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Update failed');
+    }
+    return res.json();
+};
+
+export const apiDeleteUser = async (uid: string) => {
+    const res = await fetch(`${API_URL}?uid=${uid}`, {
+        method: 'DELETE',
+        headers: await getAuthHeaders()
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Delete failed');
+    }
+    return res.json();
 };
 
 /**

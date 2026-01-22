@@ -10,6 +10,8 @@ import NotFound from './pages/NotFound';
 import { Spin, App as AntdApp } from 'antd';
 import { UploadProvider } from './contexts/UploadContext';
 import { LanguageProvider } from './contexts/LanguageContext';
+import { NotificationProvider } from './contexts/NotificationContext';
+import { OrdersProvider } from './contexts/OrdersContext';
 import UploadWidget from './components/common/UploadWidget';
 
 // Component bảo vệ Route
@@ -20,6 +22,17 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
 
   // 1. Chưa login -> Đá về Login
   if (!user) return <Navigate to="/login" replace />;
+
+  // 1.5. Check Active Status
+  if (appUser && appUser.isActive === false) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
+        <h2 style={{ color: '#ff4d4f' }}>Tài khoản đã bị khóa / Account Locked</h2>
+        <p>Vui lòng liên hệ Admin để mở khóa.</p>
+        <p>Please contact Admin to unlock your account.</p>
+      </div>
+    );
+  }
 
   // 2. Login rồi nhưng không đúng quyền
   if (allowedRoles && (!appUser || !allowedRoles.includes(appUser.role))) {
@@ -102,14 +115,18 @@ function App() {
   return (
     <AuthProvider>
       <LanguageProvider>
-        <UploadProvider>
-          <AntdApp>
-            <Router>
-              <AppRoutes />
-              <UploadWidget />
-            </Router>
-          </AntdApp>
-        </UploadProvider>
+        <NotificationProvider>
+          <UploadProvider>
+            <OrdersProvider>
+              <AntdApp>
+                <Router>
+                  <AppRoutes />
+                  <UploadWidget />
+                </Router>
+              </AntdApp>
+            </OrdersProvider>
+          </UploadProvider>
+        </NotificationProvider>
       </LanguageProvider>
     </AuthProvider>
   );
