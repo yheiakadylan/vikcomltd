@@ -420,7 +420,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                             {order?.customerFiles && order.customerFiles.length > 0 ? (
                                 order.customerFiles.map((file, idx) => {
                                     const isImage = /\.(jpeg|jpg|png|gif|webp|svg)$/i.test(file.name);
-                                    const fileUrl = file.link;
+                                    // Robust URL extraction: check link, url, or src
+                                    const fileUrl = file.link || (file as any).url || (file as any).src || '';
 
                                     return (
                                         <div key={idx} style={{
@@ -457,16 +458,18 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ open, order, onCancel
                                                     type="text"
                                                     size="small"
                                                     icon={<DownloadOutlined />}
-                                                    onClick={(e) => handleDownload(e, file.link, file.name)}
+                                                    onClick={(e) => handleDownload(e, fileUrl, file.name)}
                                                     title="Download"
+                                                    disabled={!fileUrl}
                                                 />
                                                 <Button
                                                     type="text"
                                                     size="small"
                                                     icon={<EyeOutlined />}
-                                                    href={file.link}
+                                                    href={fileUrl}
                                                     target="_blank"
                                                     title="View"
+                                                    disabled={!fileUrl}
                                                 />
                                             </div>
                                         </div>
